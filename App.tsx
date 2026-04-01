@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo, useCallback } from 'react';
+import React, { useEffect, useState, useMemo, useCallback, Component, ErrorInfo, ReactNode } from 'react';
 import { Book, AppData, AppSettings, BookNotes, BookStatus } from './types';
 import { initializeFileSystem, loadData, loadSettings, loadNotes, saveNotes, getBookKey, getLastBackupInfo, getRawKey } from './services/csvService';
 import { Header } from './components/Header';
@@ -9,7 +9,59 @@ import { BookListBlock } from './components/BookListBlock';
 import { DetailBlock } from './components/DetailBlock';
 import { StatusModal, StatusModalState } from './components/StatusModal';
 import { NoteModal } from './components/NoteModal';
+import { LoanModal } from './components/LoanModal';
 import { AddBookModal } from './components/AddBookModal';
+import { FilterModal } from './components/FilterModal';
+import { EditManualBookModal } from './components/EditManualBookModal';
+import { FilterOption } from './types';
+
+// --- ERROR BOUNDARY ---
+class ErrorBoundary extends Component<{children: ReactNode}, {hasError: boolean, error: Error | null, errorInfo: ErrorInfo | null}> {
+  constructor(props: {children: ReactNode}) {
+    super(props);
+    this.state = { hasError: false, error: null, errorInfo: null };
+  }
+
+  static getDerivedStateFromError(error: Error) {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error: Error, errorInfo: ErrorInfo) {
+    console.error("Uncaught error:", error, errorInfo);
+    this.setState({ errorInfo });
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="h-screen w-full flex flex-col items-center justify-center bg-slate-900 text-white p-6 font-sans">
+          <div className="bg-red-900/50 border border-red-500 rounded-xl p-6 max-w-md w-full shadow-2xl">
+            <h2 className="text-xl font-bold text-red-400 mb-4 flex items-center gap-2">
+              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>
+              Errore di Rendering
+            </h2>
+            <p className="text-sm text-slate-300 mb-4">
+              L'applicazione ha riscontrato un errore imprevisto. Invia questo screenshot allo sviluppatore:
+            </p>
+            <div className="bg-black/50 p-3 rounded-lg overflow-auto max-h-48 text-xs font-mono text-red-300 mb-4">
+              {this.state.error && this.state.error.toString()}
+              <br/><br/>
+              {this.state.errorInfo && this.state.errorInfo.componentStack}
+            </div>
+            <button 
+              onClick={() => window.location.reload()}
+              className="w-full py-2 bg-slate-800 hover:bg-slate-700 rounded-lg text-white font-medium transition-colors"
+            >
+              Ricarica App
+            </button>
+          </div>
+        </div>
+      );
+    }
+
+    return this.props.children;
+  }
+}
 
 // --- CONFIGURAZIONE SFONDO ---
 const BACKGROUND_IMAGE_URL = '/background.jpg'; 
@@ -17,7 +69,7 @@ const BACKGROUND_IMAGE_URL = '/background.jpg';
 export type SortOption = 'title' | 'author';
 export type SortDirection = 'asc' | 'desc';
 
-const App: React.FC = () => {
+const AppContent: React.FC = () => {
   const [data, setData] = useState<AppData>({ metadata: null, books: [] });
   const [bookNotes, setBookNotes] = useState<BookNotes>({}); // Stato delle note
   const [isAppLoading, setIsAppLoading] = useState(true); // Stato di caricamento iniziale
@@ -39,6 +91,8 @@ const App: React.FC = () => {
   
   // USER DATA FILTER
   const [showOnlyUserData, setShowOnlyUserData] = useState(false);
+  const [filterBy, setFilterBy] = useState<FilterOption>('ALL');
+  const [isFilterModalOpen, setIsFilterModalOpen] = useState(false);
 
   // UI Processing State
   const [isBusy, setIsBusy] = useState(false);
@@ -55,6 +109,16 @@ const App: React.FC = () => {
       book: Book | null;
       initialText: string;
   }>({ isOpen: false, book: null, initialText: '' });
+
+  const [loanModal, setLoanModal] = useState<{
+      isOpen: boolean;
+      book: Book | null;
+  }>({ isOpen: false, book: null });
+
+  const [editManualModal, setEditManualModal] = useState<{
+      isOpen: boolean;
+      book: Book | null;
+  }>({ isOpen: false, book: null });
 
 
   // WATCHDOG
@@ -203,6 +267,61 @@ const App: React.FC = () => {
       });
   };
 
+  const requestLoanEdit = (book: Book) => {
+      setLoanModal({
+          isOpen: true,
+          book
+      });
+  };
+
+  const handleLoanSave = (destinatario: string, data: string) => {
+      const { book } = loanModal;
+      if (!book) return;
+
+      const key = getBookKey(book);
+      const updatedNotes = { ...bookNotes };
+      const currentEntry = updatedNotes[key] || {};
+
+      updatedNotes[key] = {
+          ...currentEntry,
+          dataPrestito: data,
+          destinatarioPrestito: destinatario,
+          updatedAt: new Date().toISOString()
+      };
+
+      setBookNotes(updatedNotes);
+      saveNotes(updatedNotes);
+  };
+
+  const handleLoanReturn = () => {
+      const { book } = loanModal;
+      if (!book) return;
+
+      const key = getBookKey(book);
+      const updatedNotes = { ...bookNotes };
+      const currentEntry = updatedNotes[key];
+      
+      if (!currentEntry || !currentEntry.destinatarioPrestito) return;
+
+      const storico = currentEntry.storicoPrestiti || [];
+      storico.push({
+          dataInizio: currentEntry.dataPrestito || '',
+          dataFine: new Date().toISOString().split('T')[0],
+          destinatario: currentEntry.destinatarioPrestito
+      });
+
+      updatedNotes[key] = {
+          ...currentEntry,
+          dataPrestito: undefined,
+          destinatarioPrestito: undefined,
+          storicoPrestiti: storico,
+          updatedAt: new Date().toISOString()
+      };
+
+      setBookNotes(updatedNotes);
+      saveNotes(updatedNotes);
+  };
+
   // Salvataggio Nota
   const handleNoteSave = (text: string) => {
       const { book } = noteModal;
@@ -234,27 +353,24 @@ const App: React.FC = () => {
   };
 
   // Salvataggio Libro Manuale
-  const handleManualBookSave = (author: string, title: string, status: BookStatus | null) => {
+  const handleManualBookSave = (author: string, title: string, status: BookStatus | null, cartaceo: boolean) => {
       const key = getRawKey(author, title);
       const updatedNotes = { ...bookNotes };
       const currentEntry = updatedNotes[key] || {};
 
+      let newEntry = { ...currentEntry, updatedAt: new Date().toISOString() };
+      
       if (status) {
-          updatedNotes[key] = {
-              ...currentEntry,
-              status: status,
-              updatedAt: new Date().toISOString()
-          };
-      } else {
-          // Se stato è nullo (caso raro da UI), salviamo comunque una nota vuota se non esiste
-          // per marcare la presenza. Oppure se c'è già, non facciamo nulla.
-          if(!currentEntry.updatedAt) {
-             updatedNotes[key] = {
-                 ...currentEntry,
-                 updatedAt: new Date().toISOString()
-             }
-          }
+          newEntry.status = status;
       }
+      
+      if (cartaceo) {
+          newEntry.cartaceo = true;
+      } else {
+          delete newEntry.cartaceo;
+      }
+
+      updatedNotes[key] = newEntry;
 
       setBookNotes(updatedNotes);
       saveNotes(updatedNotes);
@@ -265,6 +381,40 @@ const App: React.FC = () => {
       }
   };
 
+  const handleEditManualBookSave = (oldBook: Book, newAuthor: string, newTitle: string) => {
+      const oldKey = getBookKey(oldBook);
+      const newKey = getRawKey(newAuthor, newTitle);
+      
+      if (oldKey !== newKey) {
+          const updatedNotes = { ...bookNotes };
+          const currentEntry = updatedNotes[oldKey];
+          
+          if (currentEntry) {
+              updatedNotes[newKey] = { ...currentEntry, updatedAt: new Date().toISOString() };
+              delete updatedNotes[oldKey];
+              setBookNotes(updatedNotes);
+              saveNotes(updatedNotes);
+          }
+      }
+      setEditManualModal({ isOpen: false, book: null });
+      if (selectedBook?.id === oldBook.id) {
+          setSelectedBook(null);
+      }
+  };
+
+  const handleDeleteManualBook = (book: Book) => {
+      const key = getBookKey(book);
+      const updatedNotes = { ...bookNotes };
+      delete updatedNotes[key];
+      setBookNotes(updatedNotes);
+      saveNotes(updatedNotes);
+      
+      setEditManualModal({ isOpen: false, book: null });
+      if (selectedBook?.id === book.id) {
+          setSelectedBook(null);
+      }
+  };
+
   useEffect(() => {
     initializeFileSystem();
     refreshAppData();
@@ -272,7 +422,7 @@ const App: React.FC = () => {
   }, [refreshAppData, refreshSettings]);
 
   const uniqueAuthors = useMemo(() => {
-    const authors = new Set(data.books.map((b) => b.author));
+    const authors = new Set(data.books.map((b) => b.author || 'Sconosciuto'));
     return Array.from(authors).sort((a: string, b: string) => a.localeCompare(b));
   }, [data.books]);
 
@@ -280,12 +430,14 @@ const App: React.FC = () => {
   const filteredBooks = useMemo(() => {
     // 1. Filter CSV Books
     let result = data.books.filter((book) => {
+      if (filterBy === 'MANUAL') return false; // CSV books are never manual
+
       // 1. User Data Filter (Top Priority)
       if (showOnlyUserData) {
           const key = getBookKey(book);
           const entry = bookNotes[key];
-          // Keep if entry exists AND (has status OR has note)
-          if (!entry || (!entry.status && !entry.note)) {
+          // Keep if entry exists AND (has status OR has note OR is cartaceo)
+          if (!entry || (!entry.status && !entry.note && !entry.cartaceo)) {
               return false;
           }
       }
@@ -294,88 +446,108 @@ const App: React.FC = () => {
       const matchAuthor = selectedAuthors.length === 0 || selectedAuthors.includes(book.author);
       if (!matchAuthor) return false;
       
-      // 3. Search Filter (Only Contains mode now)
+      // 3. Category Filter
+      if (filterBy !== 'ALL') {
+          const key = getBookKey(book);
+          const entry = bookNotes[key] || {};
+          
+          if (filterBy === 'READ' && entry.status !== 'READ') return false;
+          if (filterBy === 'RATED' && (!entry.rating || entry.rating === 0)) return false;
+          if (filterBy === 'EBOOK' && entry.cartaceo === true) return false;
+          if (filterBy === 'PAPERBACK' && !entry.cartaceo) return false;
+          if (filterBy === 'LOANED' && !entry.destinatarioPrestito) return false;
+      }
+
+      // 4. Search Filter (Only Contains mode now)
       if (searchTerm === '') return true;
       
       const searchLower = searchTerm.toLowerCase();
-      const titleLower = book.title.toLowerCase();
-      const authorLower = book.author.toLowerCase();
+      const titleLower = (book.title || '').toLowerCase();
+      const authorLower = (book.author || '').toLowerCase();
 
       return titleLower.includes(searchLower) || authorLower.includes(searchLower);
     });
 
-    // 2. Sorting Main List
+    // 2. ORPHAN BOOKS LOGIC (Libri aggiunti manualmente)
+    const csvKeys = new Set(data.books.map(b => getBookKey(b)));
+    const orphanBooks: Book[] = [];
+
+    Object.keys(bookNotes).forEach(key => {
+        // Se la chiave NON è presente nell'indice CSV, è un libro manuale
+        if (!csvKeys.has(key)) {
+            const entry = bookNotes[key];
+            const parts = key.split('|');
+            if (parts.length >= 2) {
+                const author = parts[0]; // Già Uppercase dalla key
+                const title = parts[1];  // Già Uppercase dalla key
+                
+                // Controllo filtro ricerca anche per gli orfani
+                let matchesSearch = true;
+                if (searchTerm !== '') {
+                    const searchLower = searchTerm.toLowerCase();
+                    matchesSearch = author.toLowerCase().includes(searchLower) || title.toLowerCase().includes(searchLower);
+                }
+                
+                // Controllo filtro autori anche per gli orfani
+                let matchesAuthor = true;
+                if (selectedAuthors.length > 0) {
+                     matchesAuthor = selectedAuthors.some(sa => sa.toUpperCase() === author);
+                }
+
+                // Controllo filtro User Data
+                let matchesUserData = true;
+                if (showOnlyUserData) {
+                    if (!entry || (!entry.status && !entry.note && !entry.cartaceo)) {
+                        matchesUserData = false;
+                    }
+                }
+
+                // Controllo filtro Categoria
+                let matchesCategory = true;
+                if (filterBy !== 'ALL') {
+                    if (filterBy === 'READ' && entry?.status !== 'READ') matchesCategory = false;
+                    if (filterBy === 'RATED' && (!entry?.rating || entry.rating === 0)) matchesCategory = false;
+                    if (filterBy === 'EBOOK' && entry?.cartaceo === true) matchesCategory = false;
+                    if (filterBy === 'PAPERBACK' && !entry?.cartaceo) matchesCategory = false;
+                    if (filterBy === 'LOANED' && !entry?.destinatarioPrestito) matchesCategory = false;
+                    // Note: 'MANUAL' filter is implicitly true for orphan books
+                }
+
+                if (matchesSearch && matchesAuthor && matchesUserData && matchesCategory) {
+                    orphanBooks.push({
+                        id: `manual-${key}`,
+                        author: author,
+                        title: title,
+                        format: 'MANUAL'
+                    });
+                }
+            }
+        }
+    });
+
+    // If filter is MANUAL, return ONLY orphan books
+    if (filterBy === 'MANUAL') {
+        result = orphanBooks;
+    } else {
+        result = [...result, ...orphanBooks];
+    }
+
+    // 3. Sorting Main List (Incluso gli orfani)
     result.sort((a, b) => {
       let compare = 0;
       if (sortBy === 'author') {
-        compare = a.author.localeCompare(b.author);
+        compare = (a.author || '').localeCompare(b.author || '');
         if (compare === 0) {
-           return a.title.localeCompare(b.title);
+           return (a.title || '').localeCompare(b.title || '');
         }
       } else {
-        compare = a.title.localeCompare(b.title);
+        compare = (a.title || '').localeCompare(b.title || '');
       }
       return sortDirection === 'asc' ? compare : -compare;
     });
 
-    // 3. ORPHAN BOOKS LOGIC (Solo se siamo in modalità Preferiti)
-    if (showOnlyUserData) {
-        const csvKeys = new Set(data.books.map(b => getBookKey(b)));
-        const orphanBooks: Book[] = [];
-
-        Object.keys(bookNotes).forEach(key => {
-            // Se la chiave NON è presente nell'indice CSV, è un libro manuale
-            if (!csvKeys.has(key)) {
-                const parts = key.split('|');
-                if (parts.length >= 2) {
-                    const author = parts[0]; // Già Uppercase dalla key
-                    const title = parts[1];  // Già Uppercase dalla key
-                    
-                    // Controllo filtro ricerca anche per gli orfani
-                    let matchesSearch = true;
-                    if (searchTerm !== '') {
-                        const searchLower = searchTerm.toLowerCase();
-                        matchesSearch = author.toLowerCase().includes(searchLower) || title.toLowerCase().includes(searchLower);
-                    }
-                    
-                    // Controllo filtro autori anche per gli orfani
-                    let matchesAuthor = true;
-                    if (selectedAuthors.length > 0) {
-                         // Attenzione: selectedAuthors provengono dal CSV (case sensitive originali). 
-                         // Qui abbiamo author UPPERCASE. Facciamo confronto loose.
-                         matchesAuthor = selectedAuthors.some(sa => sa.toUpperCase() === author);
-                    }
-
-                    if (matchesSearch && matchesAuthor) {
-                        orphanBooks.push({
-                            id: `manual-${key}`,
-                            author: author, // Mostrerà testo maiuscolo
-                            title: title,   // Mostrerà testo maiuscolo
-                            format: 'MANUAL'
-                        });
-                    }
-                }
-            }
-        });
-
-        // Ordina orfani tra di loro
-        orphanBooks.sort((a, b) => {
-             let compare = 0;
-             if (sortBy === 'author') {
-                 compare = a.author.localeCompare(b.author);
-                 if(compare === 0) compare = a.title.localeCompare(b.title);
-             } else {
-                 compare = a.title.localeCompare(b.title);
-             }
-             return sortDirection === 'asc' ? compare : -compare;
-        });
-
-        // Appendi in fondo
-        result = [...result, ...orphanBooks];
-    }
-
     return result;
-  }, [data.books, searchTerm, selectedAuthors, sortBy, sortDirection, showOnlyUserData, bookNotes]);
+  }, [data.books, searchTerm, selectedAuthors, sortBy, sortDirection, showOnlyUserData, filterBy, bookNotes]);
 
   // --- HANDLERS ---
   const performHeavyAction = (action: () => void) => {
@@ -443,6 +615,30 @@ const App: React.FC = () => {
     setSelectedBook(book);
   };
 
+  const handleToggleCartaceo = (book: Book, isCartaceo: boolean) => {
+      const key = getBookKey(book);
+      const updatedNotes = { ...bookNotes };
+      const currentEntry = updatedNotes[key] || {};
+
+      let newEntry = { ...currentEntry, updatedAt: new Date().toISOString() };
+      
+      if (isCartaceo) {
+          newEntry.cartaceo = true;
+      } else {
+          delete newEntry.cartaceo;
+      }
+
+      // Se l'oggetto è vuoto (no status, no note, no cartaceo), pulisci
+      if (!newEntry.status && !newEntry.note && !newEntry.cartaceo && !newEntry.rating) {
+          delete updatedNotes[key];
+      } else {
+          updatedNotes[key] = newEntry;
+      }
+
+      setBookNotes(updatedNotes);
+      saveNotes(updatedNotes);
+  };
+
   useEffect(() => {
       if (selectedBook) {
         const exists = filteredBooks.find(b => b.id === selectedBook.id);
@@ -495,6 +691,9 @@ const App: React.FC = () => {
           sortDirection={sortDirection}
           setSortDirection={setSortDirection} 
           // Filter Props
+          filterBy={filterBy}
+          onOpenFilterModal={() => setIsFilterModalOpen(true)}
+          // Author & Fav Props
           selectedAuthors={selectedAuthors}
           openAuthorModal={() => setIsAuthorModalOpen(true)}
           resetAuthors={handleResetAuthors}
@@ -519,6 +718,7 @@ const App: React.FC = () => {
             uiOpacity={uiOpacity}
             bookNotes={bookNotes} // Passiamo le note
             isLoading={isAppLoading} // Nuovo stato loading
+            onRequestEditManualBook={(book) => setEditManualModal({ isOpen: true, book })}
             />
         </div>
 
@@ -529,7 +729,9 @@ const App: React.FC = () => {
             bookNotes={bookNotes} // Passiamo le note
             onRequestStatusChange={requestStatusChange}
             onRequestNoteEdit={requestNoteEdit}
+            onRequestLoanEdit={requestLoanEdit}
             onRateBook={handleRateBook}
+            onToggleCartaceo={handleToggleCartaceo}
         />
       </div>
 
@@ -556,8 +758,19 @@ const App: React.FC = () => {
         isOpen={noteModal.isOpen}
         book={noteModal.book}
         initialNote={noteModal.initialText}
+        currentEntry={noteModal.book ? bookNotes[getBookKey(noteModal.book)] : undefined}
         onClose={() => setNoteModal({ ...noteModal, isOpen: false })}
         onSave={handleNoteSave}
+      />
+
+      {/* Modale Prestito */}
+      <LoanModal
+        isOpen={loanModal.isOpen}
+        book={loanModal.book}
+        currentEntry={loanModal.book ? bookNotes[getBookKey(loanModal.book)] : undefined}
+        onClose={() => setLoanModal({ ...loanModal, isOpen: false })}
+        onSaveLoan={handleLoanSave}
+        onReturnLoan={handleLoanReturn}
       />
 
       {/* Add Manual Book Modal */}
@@ -566,8 +779,31 @@ const App: React.FC = () => {
          onClose={() => setIsAddBookModalOpen(false)}
          onConfirm={handleManualBookSave}
       />
+
+      {/* Filter Modal */}
+      <FilterModal
+         isOpen={isFilterModalOpen}
+         onClose={() => setIsFilterModalOpen(false)}
+         currentFilter={filterBy}
+         onSelectFilter={setFilterBy}
+      />
+
+      {/* Edit Manual Book Modal */}
+      <EditManualBookModal
+         isOpen={editManualModal.isOpen}
+         book={editManualModal.book}
+         onClose={() => setEditManualModal({ isOpen: false, book: null })}
+         onConfirm={handleEditManualBookSave}
+         onDelete={handleDeleteManualBook}
+      />
     </div>
   );
-};
+}
 
-export default App;
+export default function App() {
+  return (
+    <ErrorBoundary>
+      <AppContent />
+    </ErrorBoundary>
+  );
+}
