@@ -1,16 +1,17 @@
 import React, { useState, useEffect } from 'react';
-import { Book } from '../types';
-import { X, Save, FileText } from 'lucide-react';
+import { Book, BookNoteEntry } from '../types';
+import { X, Save, FileText, UserMinus, UserCheck } from 'lucide-react';
 
 interface NoteModalProps {
     isOpen: boolean;
     book: Book | null;
     initialNote: string;
+    currentEntry?: BookNoteEntry;
     onClose: () => void;
     onSave: (note: string) => void;
 }
 
-export const NoteModal: React.FC<NoteModalProps> = ({ isOpen, book, initialNote, onClose, onSave }) => {
+export const NoteModal: React.FC<NoteModalProps> = ({ isOpen, book, initialNote, currentEntry, onClose, onSave }) => {
     const [noteText, setNoteText] = useState('');
 
     useEffect(() => {
@@ -27,8 +28,8 @@ export const NoteModal: React.FC<NoteModalProps> = ({ isOpen, book, initialNote,
     };
 
     return (
-        <div className="fixed inset-0 z-[100] bg-black/90 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
-            <div className="w-full max-w-sm bg-slate-900 border border-slate-700 rounded-xl shadow-2xl flex flex-col h-[60vh] overflow-hidden">
+        <div className="fixed inset-0 z-[100] bg-black/90 backdrop-blur-sm flex items-start justify-center pt-12 p-4 animate-in fade-in duration-200">
+            <div className="w-full max-w-sm bg-slate-900 border border-slate-700 rounded-xl shadow-2xl flex flex-col h-[75vh] overflow-hidden">
                 
                 {/* Header */}
                 <div className="flex items-center justify-between p-4 border-b border-slate-800 bg-slate-800/50">

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { X, Save, Link as LinkIcon, FolderOpen, Terminal, ChevronRight, ChevronDown, Sliders, Database, Network, ArrowLeft, CloudCog, FileText, Activity } from 'lucide-react';
+import { X, Save, Link as LinkIcon, FolderOpen, Terminal, ChevronRight, ChevronDown, Sliders, Database, Network, ArrowLeft, CloudCog, FileText, Activity, QrCode, Download, CheckCircle2 } from 'lucide-react';
+import { QRCodeCanvas } from 'qrcode.react';
 import { loadSettings, saveSettings, exportBackupData, importBackupData, getLastBackupInfo, saveLastBackupInfo, BackupInfo } from '../services/csvService';
 import { getLogs, clearLogs, testProxyConnection } from '../services/syncService';
 import { AppSettings } from '../types';
@@ -64,6 +65,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, h
   
   const [showVisuals, setShowVisuals] = useState(false);
   const [showBackup, setShowBackup] = useState(false);
+  const [showQrCode, setShowQrCode] = useState(false);
+  const [qrInput, setQrInput] = useState('');
 
   useEffect(() => {
     if (isOpen) {
@@ -73,6 +76,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, h
       setShowUpdateUrlInput(false);
       setShowProxyInput(false);
       setShowConsole(false);
+      setShowQrCode(false);
+      setQrInput('');
       setCurrentView('MAIN');
 
       const settings = loadSettings();
@@ -154,6 +159,19 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, h
       setIsTestingProxy(false);
       
       alert(res.msg);
+  };
+
+  const handleDownloadQrCode = () => {
+    const canvas = document.getElementById('qr-gen') as HTMLCanvasElement;
+    if (canvas) {
+      const pngUrl = canvas.toDataURL('image/png').replace('image/png', 'image/octet-stream');
+      const downloadLink = document.createElement('a');
+      downloadLink.href = pngUrl;
+      downloadLink.download = 'qrcode.png';
+      document.body.appendChild(downloadLink);
+      downloadLink.click();
+      document.body.removeChild(downloadLink);
+    }
   };
   
   const handleSave = () => {
@@ -246,8 +264,93 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, h
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
-      {/* SUCCESS/CONFIRM MODALS OMITTED FOR BREVITY, ASSUME THEY ARE HERE */}
-      
+      {/* Disk Save Confirm Modal */}
+      {diskSaveConfirm && (
+          <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in zoom-in duration-200">
+              <div className="bg-slate-900 border border-slate-700 w-full max-w-sm rounded-xl shadow-2xl overflow-hidden flex flex-col p-6 items-center text-center gap-4">
+                  <Database className="w-8 h-8 text-blue-400" />
+                  <h3 className="text-xl font-bold text-white">Salva su Disco</h3>
+                  <p className="text-sm text-slate-300">Vuoi salvare il backup nella cartella Documenti del tuo dispositivo?</p>
+                  <p className="text-xs font-mono text-emerald-400 bg-slate-950 p-2 rounded w-full break-all">{diskSaveConfirm.filename}</p>
+                  <div className="flex gap-3 w-full mt-2">
+                      <button onClick={() => setDiskSaveConfirm(null)} className="flex-1 py-3 border border-slate-700 rounded-lg text-slate-300 hover:bg-slate-800 transition-colors">Annulla</button>
+                      <button onClick={handleSaveDiskExecute} className="flex-1 py-3 bg-blue-600 hover:bg-blue-500 text-white rounded-lg font-bold transition-colors">Salva</button>
+                  </div>
+              </div>
+          </div>
+      )}
+
+      {/* Import Confirm Modal */}
+      {importConfirm && (
+          <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in zoom-in duration-200">
+              <div className="bg-slate-900 border border-slate-700 w-full max-w-sm rounded-xl shadow-2xl overflow-hidden flex flex-col p-6 items-center text-center gap-4">
+                  <Database className="w-8 h-8 text-orange-400" />
+                  <h3 className="text-xl font-bold text-white">Importa Backup</h3>
+                  <p className="text-sm text-slate-300">Vuoi sovrascrivere i dati attuali con questo backup? L'operazione non è reversibile.</p>
+                  <p className="text-xs font-mono text-orange-400 bg-slate-950 p-2 rounded w-full break-all">{importConfirm.name}</p>
+                  <div className="flex gap-3 w-full mt-2">
+                      <button onClick={() => setImportConfirm(null)} className="flex-1 py-3 border border-slate-700 rounded-lg text-slate-300 hover:bg-slate-800 transition-colors">Annulla</button>
+                      <button onClick={handleExecuteImport} className="flex-1 py-3 bg-orange-600 hover:bg-orange-500 text-white rounded-lg font-bold transition-colors">Importa</button>
+                  </div>
+              </div>
+          </div>
+      )}
+
+      {/* DB Inspector Modal */}
+      {showDbInspector && (
+          <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in zoom-in duration-200">
+              <div className="bg-slate-900 border border-slate-700 w-full max-w-2xl rounded-xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+                  <div className="flex items-center justify-between p-4 border-b border-slate-800 bg-slate-800/50">
+                      <div className="flex items-center gap-2 text-white">
+                          <Database className="w-5 h-5 text-purple-400" />
+                          <h2 className="text-lg font-bold">DB Inspector</h2>
+                      </div>
+                      <button onClick={() => setShowDbInspector(false)} className="text-slate-400 hover:text-white transition-colors"><X className="w-6 h-6" /></button>
+                  </div>
+                  <div className="p-4 flex flex-col gap-2 overflow-hidden flex-1">
+                      <p className="text-xs text-slate-400">Elementi totali: <span className="text-white font-bold">{inspectorCount}</span></p>
+                      <textarea 
+                          readOnly 
+                          value={inspectorContent} 
+                          className="w-full flex-1 bg-black border border-slate-700 rounded p-3 text-[10px] text-green-400 font-mono resize-none focus:outline-none"
+                      />
+                  </div>
+                  <div className="p-4 border-t border-slate-800 bg-slate-800/30 flex justify-end">
+                      <button onClick={() => setShowDbInspector(false)} className="bg-slate-700 hover:bg-slate-600 text-white px-4 py-2 rounded-lg font-medium transition-colors text-sm">
+                          Chiudi
+                      </button>
+                  </div>
+              </div>
+          </div>
+      )}
+
+      {/* Backup Success Modal */}
+      {backupSuccess.isOpen && (
+          <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in zoom-in duration-200">
+              <div className="bg-slate-900 border border-slate-700 w-full max-w-sm rounded-xl shadow-2xl overflow-hidden flex flex-col p-6 items-center text-center gap-4">
+                  <div className="w-16 h-16 rounded-full bg-emerald-900/30 flex items-center justify-center mb-2">
+                      <CheckCircle2 className="w-8 h-8 text-emerald-500" />
+                  </div>
+                  <h3 className="text-xl font-bold text-white">Backup {backupSuccess.resultLabel}</h3>
+                  <div className="text-sm text-slate-300 space-y-2">
+                      <p>Il file di backup è stato salvato con successo.</p>
+                      <div className="bg-slate-950 p-3 rounded border border-slate-800 text-left">
+                          <p className="text-[10px] text-slate-500 uppercase font-bold mb-1">Nome File</p>
+                          <p className="font-mono text-emerald-400 break-all">{backupSuccess.filename}</p>
+                          <p className="text-[10px] text-slate-500 uppercase font-bold mt-2 mb-1">Percorso</p>
+                          <p className="font-mono text-slate-300 break-all">Cartella Documenti</p>
+                      </div>
+                  </div>
+                  <button 
+                      onClick={() => setBackupSuccess({ ...backupSuccess, isOpen: false })}
+                      className="mt-4 w-full bg-emerald-600 hover:bg-emerald-500 text-white py-3 rounded-lg font-bold transition-colors"
+                  >
+                      Chiudi
+                  </button>
+              </div>
+          </div>
+      )}
+
       <div className="bg-slate-900 border border-slate-700 w-full max-w-sm rounded-xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
         <div className="flex items-center justify-between p-4 border-b border-slate-800 bg-slate-800/50">
           <div className="flex items-center gap-2 text-white">
@@ -294,6 +397,41 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, h
                           <div className="flex items-center gap-2"><Sliders className="w-4 h-4 text-emerald-400" />Aspetto</div>{showVisuals ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
                       </button>
                       {showVisuals && ( <div className="p-3 bg-slate-950/30 rounded border border-slate-800/50"> <input type="range" min="0" max="1" step="0.05" value={uiOpacity} onChange={(e) => setUiOpacity(parseFloat(e.target.value))} className="w-full h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-emerald-500"/> </div> )}
+                  </div>
+
+                  {/* QR CODE GENERATOR */}
+                  <div className="flex flex-col gap-2">
+                      <button onClick={() => setShowQrCode(!showQrCode)} className="flex items-center justify-between w-full p-3 bg-slate-800/50 rounded-lg border border-slate-700/50 text-slate-300 font-medium text-sm">
+                          <div className="flex items-center gap-2"><QrCode className="w-4 h-4 text-sky-400" />Generatore QR Code</div>{showQrCode ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+                      </button>
+                      {showQrCode && (
+                        <div className="space-y-3 p-3 bg-slate-950/30 rounded border border-slate-800/50 flex flex-col items-center">
+                            <input 
+                                type="text" 
+                                value={qrInput} 
+                                onChange={(e) => setQrInput(e.target.value)} 
+                                className="w-full bg-slate-800 border border-slate-700 rounded p-2 text-xs text-slate-200" 
+                                placeholder="Inserisci testo o link..." 
+                            />
+                            {qrInput.trim() !== '' && (
+                                <div className="flex flex-col items-center gap-3 mt-2 bg-white p-3 rounded-lg">
+                                    <QRCodeCanvas 
+                                        id="qr-gen"
+                                        value={qrInput} 
+                                        size={150} 
+                                        level={"H"}
+                                        includeMargin={true}
+                                    />
+                                    <button 
+                                        onClick={handleDownloadQrCode} 
+                                        className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-500 text-white px-3 py-1.5 rounded text-xs font-bold transition-colors w-full justify-center"
+                                    >
+                                        <Download className="w-3.5 h-3.5" /> Scarica Immagine
+                                    </button>
+                                </div>
+                            )}
+                        </div>
+                      )}
                   </div>
 
                   <button onClick={() => setCurrentView('DOWNLOAD_SETTINGS')} className="flex items-center justify-between w-full p-3 bg-slate-800/50 rounded-lg border border-slate-700/50 text-slate-300 font-medium text-sm">

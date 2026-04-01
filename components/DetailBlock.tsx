@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Book, BookNotes, BookStatus } from '../types';
-import { Check, CheckCircle2, Bookmark, FileSignature, CircleDashed, XCircle, Star, Globe } from 'lucide-react';
+import type { Book, BookNotes, BookStatus } from '../types';
+import { Check, CheckCircle2, Bookmark, FileSignature, CircleDashed, XCircle, Star, Globe, Book as BookIcon, UserCheck, UserMinus } from 'lucide-react';
 import { getBookKey } from '../services/csvService';
 
 interface DetailBlockProps {
@@ -10,7 +10,9 @@ interface DetailBlockProps {
   // Callbacks per delegare l'apertura modali al padre (App)
   onRequestStatusChange: (book: Book, targetStatus: BookStatus | null, actionType: 'ADD' | 'REMOVE' | 'SWITCH') => void;
   onRequestNoteEdit: (book: Book) => void;
+  onRequestLoanEdit: (book: Book) => void;
   onRateBook: (book: Book, rating: number) => void;
+  onToggleCartaceo: (book: Book, isCartaceo: boolean) => void;
 }
 
 export const DetailBlock: React.FC<DetailBlockProps> = ({ 
@@ -19,7 +21,9 @@ export const DetailBlock: React.FC<DetailBlockProps> = ({
     bookNotes,
     onRequestStatusChange,
     onRequestNoteEdit,
-    onRateBook
+    onRequestLoanEdit,
+    onRateBook,
+    onToggleCartaceo
 }) => {
   const [copiedField, setCopiedField] = useState<string | null>(null);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -175,9 +179,31 @@ export const DetailBlock: React.FC<DetailBlockProps> = ({
                             ref={menuRef}
                             className="absolute bottom-full left-0 mb-2 w-48 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl flex flex-col overflow-hidden animate-in fade-in slide-in-from-bottom-2 z-50"
                         >
+                            {currentEntry?.cartaceo && (
+                                <button 
+                                    onClick={() => {
+                                        onRequestLoanEdit(book);
+                                        setIsMenuOpen(false);
+                                    }}
+                                    className={`flex items-center gap-3 px-4 py-3 text-sm font-medium transition-colors hover:bg-slate-800 border-b border-slate-800 ${!!currentEntry?.destinatarioPrestito ? 'text-orange-400' : 'text-slate-300'}`}
+                                >
+                                    {!!currentEntry?.destinatarioPrestito ? <UserMinus className="w-4 h-4 text-orange-500" /> : <UserCheck className="w-4 h-4" />}
+                                    Prestito
+                                </button>
+                            )}
+                            <button 
+                                onClick={() => {
+                                    onRequestNoteEdit(book);
+                                    setIsMenuOpen(false);
+                                }}
+                                className={`flex items-center gap-3 px-4 py-3 text-sm font-medium transition-colors hover:bg-slate-800 ${hasNote ? 'text-indigo-400' : 'text-slate-300'}`}
+                            >
+                                <FileSignature className={`w-4 h-4 ${hasNote ? 'text-indigo-500' : ''}`} />
+                                Note
+                            </button>
                             <button 
                                 onClick={() => handleMenuSelection('READ')}
-                                className={`flex items-center gap-3 px-4 py-3 text-sm font-medium transition-colors hover:bg-slate-800 ${currentStatus === 'READ' ? 'text-emerald-400' : 'text-slate-300'}`}
+                                className={`flex items-center gap-3 px-4 py-3 text-sm font-medium transition-colors hover:bg-slate-800 border-t border-slate-800 ${currentStatus === 'READ' ? 'text-emerald-400' : 'text-slate-300'}`}
                             >
                                 <CheckCircle2 className="w-4 h-4 text-emerald-500" />
                                 Letto
@@ -195,6 +221,19 @@ export const DetailBlock: React.FC<DetailBlockProps> = ({
                             >
                                 <XCircle className="w-4 h-4" />
                                 Nessuno
+                            </button>
+                            
+                            {/* NEW CARTACEO TOGGLE */}
+                            <button 
+                                onClick={(e) => { 
+                                    e.stopPropagation(); 
+                                    if(book) onToggleCartaceo(book, !currentEntry?.cartaceo); 
+                                    setIsMenuOpen(false);
+                                }}
+                                className={`flex items-center gap-3 px-4 py-3 text-sm font-medium transition-colors hover:bg-slate-800 border-t border-slate-800 ${currentEntry?.cartaceo ? 'text-emerald-400' : 'text-slate-400'}`}
+                            >
+                                <BookIcon className={`w-4 h-4 ${currentEntry?.cartaceo ? 'text-emerald-500' : ''}`} />
+                                Cartaceo
                             </button>
 
                             {/* RATING SECTION (Solo se LETTO) */}
@@ -291,32 +330,33 @@ export const DetailBlock: React.FC<DetailBlockProps> = ({
                     </div>
                 </div>
 
-                {/* DESTRA: PULSANTE NOTE OPPURE RICERCA (SWAP) */}
+                {/* DESTRA: PULSANTE RICERCA WEB */}
                 <div className="flex flex-col gap-2 shrink-0 items-center">
-                    {webSearchState.visible ? (
-                        /* PULSANTE RICERCA WEB (SOSTITUISCE NOTE) */
-                        <button
-                            onClick={handleWebSearch}
-                            className="mt-1 p-3 rounded-full border border-sky-400 bg-sky-600 text-white shadow-lg shadow-sky-900/50 animate-in fade-in zoom-in duration-300 active:scale-95 transition-transform"
-                            title="Cerca su Google"
-                        >
-                            <Globe className="w-6 h-6" />
-                        </button>
-                    ) : (
-                        /* PULSANTE NOTE STANDARD */
-                        <button 
-                            onClick={() => onRequestNoteEdit(book)}
-                            className={`
-                                mt-1 p-3 rounded-full border shadow-sm transition-all active:scale-95
-                                ${hasNote 
-                                    ? 'bg-indigo-600 border-indigo-400 text-white shadow-indigo-900/50' 
-                                    : 'bg-slate-800/50 border-slate-700/50 text-slate-500 hover:text-indigo-400'}
-                            `}
-                            title="Gestisci Note"
-                        >
-                            <FileSignature className="w-6 h-6" />
-                        </button>
-                    )}
+                    <button
+                        onClick={() => {
+                            if (webSearchState.query) {
+                                handleWebSearch();
+                            } else {
+                                // Default search if no specific query is active
+                                const defaultQuery = `${book.title} ${book.author}`;
+                                window.open(`https://www.google.com/search?q=${encodeURIComponent(defaultQuery)}`, '_blank');
+                            }
+                        }}
+                        className={`
+                            mt-1 p-3 rounded-full border shadow-sm transition-all active:scale-95 relative
+                            ${webSearchState.visible 
+                                ? 'bg-sky-600 border-sky-400 text-white shadow-sky-900/50 animate-pulse' 
+                                : 'bg-slate-800/50 border-slate-700/50 text-slate-500 hover:text-sky-400'}
+                        `}
+                        title="Cerca su Google"
+                    >
+                        <Globe className="w-6 h-6" />
+                        {webSearchState.visible && (
+                            <span className="absolute -top-1 -right-1 bg-sky-500 text-white text-[8px] font-bold px-1 rounded-full border border-sky-900">
+                                {webSearchState.query.includes('bibliografia') ? 'Aut' : 'Tit'}
+                            </span>
+                        )}
+                    </button>
                 </div>
 
             </div>

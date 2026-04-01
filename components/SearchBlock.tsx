@@ -1,6 +1,6 @@
 import React, { useRef } from 'react';
-import { Search, Zap, Target, X, Loader2, ArrowDownAZ, ArrowUpAZ, User, BookType, Eraser, Users, BookHeart, RefreshCw, Plus } from 'lucide-react';
-import { SortOption, SortDirection } from '../types';
+import { Search, Zap, Target, X, Loader2, ArrowDownAZ, ArrowUpAZ, User, BookType, Eraser, Users, BookHeart, RefreshCw, Plus, Filter } from 'lucide-react';
+import { SortOption, SortDirection, FilterOption } from '../types';
 
 interface SearchBlockProps {
   searchTerm: string;
@@ -14,6 +14,10 @@ interface SearchBlockProps {
   setSortBy: (sort: SortOption) => void;
   sortDirection: SortDirection;
   setSortDirection: (dir: SortDirection) => void;
+
+  // Filter Props
+  filterBy: FilterOption;
+  onOpenFilterModal: () => void;
 
   // Author & Fav Props (Migrated from AuthorComboBlock)
   selectedAuthors: string[];
@@ -36,6 +40,8 @@ export const SearchBlock: React.FC<SearchBlockProps> = ({
   setSortBy,
   sortDirection,
   setSortDirection,
+  filterBy,
+  onOpenFilterModal,
   selectedAuthors,
   openAuthorModal,
   resetAuthors,
@@ -56,8 +62,13 @@ export const SearchBlock: React.FC<SearchBlockProps> = ({
     inputRef.current?.focus();
   };
 
-  const toggleSortDirection = () => {
-     setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
+  const handleSortClick = (option: SortOption) => {
+    if (sortBy === option) {
+      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortBy(option);
+      setSortDirection('asc');
+    }
   };
 
   const authorCount = selectedAuthors.length;
@@ -119,38 +130,53 @@ export const SearchBlock: React.FC<SearchBlockProps> = ({
 
           {/* 3. SORT TITLE */}
           <button
-              onClick={() => setSortBy('title')}
+              onClick={() => handleSortClick('title')}
               className={`
                  h-12 flex-1 rounded-xl border flex flex-col items-center justify-center gap-0.5 transition-all active:scale-95
                  ${sortBy === 'title'
-                    ? 'bg-sky-600 border-sky-400 text-white shadow-sky-900/30'
+                    ? (sortDirection === 'asc' ? 'bg-blue-600 border-blue-400 text-white shadow-blue-900/30' : 'bg-yellow-500 border-yellow-400 text-slate-900 shadow-yellow-900/30')
                     : 'bg-slate-800/60 border-slate-700/50 text-slate-400'}
               `}
           >
-              <BookType className="w-5 h-5" />
+              <div className="flex items-center gap-1">
+                  <BookType className="w-4 h-4" />
+                  {sortBy === 'title' && (sortDirection === 'asc' ? <ArrowDownAZ className="w-3 h-3" /> : <ArrowUpAZ className="w-3 h-3" />)}
+              </div>
               <span className="text-[9px] font-bold uppercase truncate w-full text-center px-1">Titolo</span>
           </button>
 
           {/* 4. SORT AUTHOR */}
           <button
-              onClick={() => setSortBy('author')}
+              onClick={() => handleSortClick('author')}
               className={`
                  h-12 flex-1 rounded-xl border flex flex-col items-center justify-center gap-0.5 transition-all active:scale-95
                  ${sortBy === 'author'
-                    ? 'bg-sky-600 border-sky-400 text-white shadow-sky-900/30'
+                    ? (sortDirection === 'asc' ? 'bg-blue-600 border-blue-400 text-white shadow-blue-900/30' : 'bg-yellow-500 border-yellow-400 text-slate-900 shadow-yellow-900/30')
                     : 'bg-slate-800/60 border-slate-700/50 text-slate-400'}
               `}
           >
-              <User className="w-5 h-5" />
+              <div className="flex items-center gap-1">
+                  <User className="w-4 h-4" />
+                  {sortBy === 'author' && (sortDirection === 'asc' ? <ArrowDownAZ className="w-3 h-3" /> : <ArrowUpAZ className="w-3 h-3" />)}
+              </div>
               <span className="text-[9px] font-bold uppercase truncate w-full text-center px-1">Autore</span>
           </button>
 
-           {/* 5. SORT DIRECTION */}
+           {/* 5. FILTER BUTTON */}
            <button
-              onClick={toggleSortDirection}
-              className="h-12 flex-1 rounded-xl bg-slate-800/60 border border-slate-700/50 text-slate-300 flex items-center justify-center transition-all active:scale-95 hover:bg-slate-700"
+              onClick={onOpenFilterModal}
+              className={`
+                  h-12 flex-1 rounded-xl border flex items-center justify-center transition-all active:scale-95 relative
+                  ${filterBy !== 'ALL' 
+                      ? 'bg-emerald-600 border-emerald-400 text-white shadow-emerald-900/30' 
+                      : 'bg-slate-800/60 border-slate-700/50 text-slate-300 hover:bg-slate-700'}
+              `}
+              title="Filtra libri"
           >
-              {sortDirection === 'asc' ? <ArrowDownAZ className="w-6 h-6" /> : <ArrowUpAZ className="w-6 h-6" />}
+              <Filter className="w-6 h-6" />
+              {filterBy !== 'ALL' && (
+                  <div className="absolute top-1 right-1 w-2.5 h-2.5 bg-white rounded-full border border-emerald-600"></div>
+              )}
           </button>
 
       </div>

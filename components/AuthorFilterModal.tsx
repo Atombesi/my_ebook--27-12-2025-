@@ -33,9 +33,20 @@ export const AuthorFilterModal: React.FC<AuthorFilterModalProps> = ({
     }, [isOpen, initialSelected]);
 
     const filteredAuthors = useMemo(() => {
-        if (!filterText) return authors;
-        return authors.filter(a => a.toLowerCase().includes(filterText.toLowerCase()));
-    }, [authors, filterText]);
+        let result = authors;
+        if (filterText) {
+            result = authors.filter(a => a.toLowerCase().includes(filterText.toLowerCase()));
+        }
+
+        // Sort selected authors to the top
+        return [...result].sort((a, b) => {
+            const aSelected = tempSelected.includes(a);
+            const bSelected = tempSelected.includes(b);
+            if (aSelected && !bSelected) return -1;
+            if (!aSelected && bSelected) return 1;
+            return a.localeCompare(b);
+        });
+    }, [authors, filterText, tempSelected]);
 
     // Jump Bar Logic
     const baseLetters = ['A', 'F', 'K', 'P', 'U', 'Z'];
@@ -78,9 +89,19 @@ export const AuthorFilterModal: React.FC<AuthorFilterModalProps> = ({
             <div className="p-4 border-b border-slate-800 bg-slate-900/90 flex flex-col gap-3 shadow-md">
                 <div className="flex items-center justify-between">
                     <h2 className="text-white font-bold text-lg">Filtra Autori</h2>
-                    <button onClick={onClose} className="p-2 bg-slate-800 rounded-full text-slate-400 hover:text-white transition-colors">
-                        <X className="w-5 h-5" />
-                    </button>
+                    <div className="flex items-center gap-2">
+                        {tempSelected.length > 0 && (
+                            <button 
+                                onClick={() => setTempSelected([])}
+                                className="text-xs text-slate-400 hover:text-red-400 transition-colors px-2 py-1 rounded bg-slate-800/50"
+                            >
+                                Deseleziona tutti
+                            </button>
+                        )}
+                        <button onClick={onClose} className="p-2 bg-slate-800 rounded-full text-slate-400 hover:text-white transition-colors">
+                            <X className="w-5 h-5" />
+                        </button>
+                    </div>
                 </div>
                 
                 {/* Search Bar */}

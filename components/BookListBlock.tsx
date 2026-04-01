@@ -1,9 +1,11 @@
-import React, { useRef, useEffect, useMemo } from 'react';
+import React, { useRef, useEffect, useMemo, useState } from 'react';
 import { Book, BookNotes, SortOption, SortDirection } from '../types';
-import { User, CheckCircle2, Bookmark, Loader2 } from 'lucide-react';
+import { User, CheckCircle2, Bookmark, Loader2, Book as BookIcon, UserMinus, Star, Edit2 } from 'lucide-react';
 import { getBookKey } from '../services/csvService';
-import { FixedSizeList as List, ListChildComponentProps } from 'react-window';
-import AutoSizer from 'react-virtualized-auto-sizer';
+
+// --- SOLUZIONE RADICALE E DEFINITIVA ---
+// Nessuna libreria esterna. Zero react-window, zero auto-sizer.
+// Un virtualizer nativo scritto in React puro che non può crashare.
 
 interface BookListBlockProps {
   books: Book[];
@@ -14,65 +16,59 @@ interface BookListBlockProps {
   uiOpacity: number;
   bookNotes: BookNotes;
   isLoading: boolean;
+  onRequestEditManualBook: (book: Book) => void;
 }
 
-// Tipo unione per gli elementi della lista: o un Libro o una Intestazione
 type ListItem = 
   | { type: 'book'; data: Book }
   | { type: 'header'; author: string };
 
-// Interfaccia per i dati passati alla singola riga (Row)
 interface RowData {
   items: ListItem[];
   onSelectBook: (book: Book) => void;
   selectedBookId: string | undefined;
   bookNotes: BookNotes;
-  sortBy: SortOption; // Necessario per sapere se siamo in modalità autore
+  sortBy: SortOption;
+  onRequestEditManualBook: (book: Book) => void;
 }
 
-// Componente Riga Virtualizzata (Renderizzato solo quando visibile)
-const BookRow = ({ index, style, data }: ListChildComponentProps<RowData>) => {
+const BookRow = ({ index, style, data }: { index: number, style: React.CSSProperties, data: RowData }) => {
   const { items, onSelectBook, selectedBookId, bookNotes, sortBy } = data;
   const item = items[index];
   const isAuthorMode = sortBy === 'author';
 
-  // Caso 1: Header Autore
   if (item.type === 'header') {
       const adjustedStyle = {
           ...style,
-          width: `calc(${style.width} - 32px)`,
+          width: `calc(100% - 32px)`,
           left: 0,
           zIndex: 5
       };
       
       return (
-          <div style={adjustedStyle} className="px-3 flex items-end pb-1.5">
-              <div className="text-white font-bold text-sm tracking-wide w-full leading-none pb-1 mt-auto flex items-center gap-2">
-                  <User className="w-3.5 h-3.5 text-emerald-500" />
-                  {item.author}
+          <div style={adjustedStyle} className="px-3 flex items-end pb-1.5 absolute">
+              <div className="text-white font-bold text-sm tracking-wide w-full leading-none pb-1 mt-auto flex items-center gap-2 overflow-hidden">
+                  <User className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                  <div className="truncate w-full min-w-0">{item.author}</div>
               </div>
           </div>
       );
   }
 
-  // Caso 2: Libro
   const book = item.data;
   const key = getBookKey(book);
   const noteEntry = bookNotes[key]; 
   const status = noteEntry?.status; 
 
-  // Determinazione stile: Colore e Dimensione
   let baseColor = isAuthorMode ? "text-slate-300" : "text-slate-100";
   let textSize = isAuthorMode ? "text-[11px]" : "text-sm font-medium";
 
-  // Override colori per status
   if (status === 'READ') {
       baseColor = "text-emerald-400";
   } else if (status === 'TO_READ') {
       baseColor = "text-yellow-400";
   }
 
-  // Override colore selezione (se non ha status o per evidenziare)
   if (selectedBookId === book.id && !status) {
      baseColor = "text-emerald-100";
   }
@@ -86,15 +82,19 @@ const BookRow = ({ index, style, data }: ListChildComponentProps<RowData>) => {
       statusIcon = <Bookmark className="w-3.5 h-3.5 text-yellow-500 shrink-0" />;
   }
 
-  // Nota: lo 'style' passato da react-window è essenziale per il posizionamento assoluto
+  const isCartaceo = noteEntry?.cartaceo === true;
+  const isLoaned = !!noteEntry?.destinatarioPrestito;
+  const hasRating = (noteEntry?.rating || 0) > 0;
+  const isManual = book.format === 'MANUAL';
+
   const adjustedStyle = {
       ...style,
-      width: `calc(${style.width} - 32px)`, // Lascia spazio alla barra A-Z
+      width: `calc(100% - 32px)`,
       left: 0, 
   };
   
   return (
-    <div style={adjustedStyle} className="px-2">
+    <div style={adjustedStyle} className="px-2 absolute">
         <div
             onClick={() => onSelectBook(book)}
             className={`
@@ -105,17 +105,31 @@ const BookRow = ({ index, style, data }: ListChildComponentProps<RowData>) => {
                 : 'hover:bg-slate-600/30 bg-transparent border-b border-slate-700/20'}
             `}
         >
-            <div className={`flex items-center justify-between gap-2 ${!isAuthorMode ? 'items-start' : ''}`}>
-                <span className={`line-clamp-1 ${titleClass}`}>
-                    {book.title}
-                </span>
-                {statusIcon}
+            <div className={`flex items-center justify-between gap-2 overflow-hidden ${!isAuthorMode ? 'items-start' : ''}`}>
+                <div className={`truncate w-full min-w-0 flex items-center gap-1.5 ${titleClass}`}>
+                    {isCartaceo && <BookIcon className="w-3.5 h-3.5 text-blue-400 shrink-0" />}
+                    {isLoaned && <UserMinus className="w-3.5 h-3.5 text-orange-400 shrink-0" />}
+                    {hasRating && <Star className="w-3.5 h-3.5 text-yellow-500 fill-yellow-500 shrink-0" />}
+                    <span className="truncate">{book.title}</span>
+                </div>
+                <div className="flex flex-col items-end gap-1.5 shrink-0">
+                    {statusIcon}
+                    {isManual && (
+                        <button 
+                            onClick={(e) => { e.stopPropagation(); data.onRequestEditManualBook(book); }}
+                            className="text-slate-400 hover:text-sky-400 transition-colors"
+                            title="Modifica libro manuale"
+                        >
+                            <Edit2 className="w-3.5 h-3.5" />
+                        </button>
+                    )}
+                </div>
             </div>
             
             {!isAuthorMode && (
-                <div className="flex items-center gap-1 text-[11px] text-slate-300 mt-0.5">
-                    <User className="w-3 h-3 opacity-70" />
-                    <span className="truncate">{book.author}</span>
+                <div className="flex items-center gap-1 text-[11px] text-slate-300 mt-0.5 overflow-hidden">
+                    <User className="w-3 h-3 opacity-70 shrink-0" />
+                    <span className="truncate w-full min-w-0">{book.author}</span>
                 </div>
             )}
         </div>
@@ -123,24 +137,22 @@ const BookRow = ({ index, style, data }: ListChildComponentProps<RowData>) => {
   );
 };
 
-export const BookListBlock: React.FC<BookListBlockProps> = ({ books, onSelectBook, selectedBookId, sortBy, sortDirection, uiOpacity, bookNotes, isLoading }) => {
-  const listRef = useRef<List>(null);
+export const BookListBlock: React.FC<BookListBlockProps> = ({ books, onSelectBook, selectedBookId, sortBy, sortDirection, uiOpacity, bookNotes, isLoading, onRequestEditManualBook }) => {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [scrollTop, setScrollTop] = useState(0);
+  const [containerHeight, setContainerHeight] = useState(0);
   
   const baseLetters = ['A', 'F', 'K', 'P', 'U', 'Z'];
   const jumpLetters = sortDirection === 'asc' ? baseLetters : [...baseLetters].reverse();
 
-  // ELABORAZIONE LISTA: Trasforma la lista piatta in lista con intestazioni se necessario
   const items: ListItem[] = useMemo(() => {
       if (sortBy === 'title') {
-          // Modalità classica
           return books.map(b => ({ type: 'book', data: b }));
       } else {
-          // Modalità Raggruppata per Autore
           const result: ListItem[] = [];
           let lastAuthor = '';
           
           books.forEach(book => {
-              // Rileva cambio autore (Case Insensitive per il controllo, ma usa il primo trovato per display)
               const currentAuthorUpper = book.author.trim().toUpperCase();
               
               if (currentAuthorUpper !== lastAuthor) {
@@ -153,27 +165,57 @@ export const BookListBlock: React.FC<BookListBlockProps> = ({ books, onSelectBoo
       }
   }, [books, sortBy]);
 
-  // FIX SCROLL JUMP: Usiamo una firma univoca per capire se la struttura è cambiata (Es. cambio sort o cambio ricerca/filtri)
-  // Se cambia solo lo stato di un libro (bookNotes), 'books' cambia riferimento ma il contenuto è stabile in termini di ID e lunghezza (se non filtriamo su stato)
-  // Usiamo ID primo elemento + lunghezza come firma semplice.
   const listStructureKey = `${sortBy}-${sortDirection}-${books.length}-${books[0]?.id || 'empty'}`;
 
+  // Reset scroll on sort/filter changes
   useEffect(() => {
-    if (listRef.current && items.length > 0) {
-        listRef.current.scrollTo(0);
+    if (containerRef.current && items.length > 0) {
+        containerRef.current.scrollTop = 0;
     }
   }, [listStructureKey]);
 
-  const handleJumpTo = (letter: string) => {
-      if (!listRef.current) return;
+  // Measure container height
+  useEffect(() => {
+    if (!containerRef.current) return;
+    
+    let observer: ResizeObserver | null = null;
+    let handleResize: (() => void) | null = null;
 
-      // Cerca nell'array ELABORATO (items) e non in quello grezzo (books)
+    if (typeof ResizeObserver !== 'undefined') {
+        observer = new ResizeObserver((entries) => {
+          for (let entry of entries) {
+            setContainerHeight(entry.contentRect.height);
+          }
+        });
+        observer.observe(containerRef.current);
+    } else {
+        // Fallback for older WebViews
+        handleResize = () => {
+            if (containerRef.current) {
+                setContainerHeight(containerRef.current.clientHeight);
+            }
+        };
+        window.addEventListener('resize', handleResize);
+    }
+    
+    setContainerHeight(containerRef.current.clientHeight);
+    
+    return () => {
+        if (observer) observer.disconnect();
+        if (handleResize) window.removeEventListener('resize', handleResize);
+    };
+  }, []);
+
+  const itemSize = sortBy === 'author' ? 40 : 64;
+
+  const handleJumpTo = (letter: string) => {
+      if (!containerRef.current) return;
+
       const index = items.findIndex(item => {
           let textToCheck = '';
           if (item.type === 'header') {
               textToCheck = item.author.toUpperCase();
           } else {
-              // Se è un libro, controlliamo in base all'ordinamento corrente
               textToCheck = (sortBy === 'author' ? item.data.author : item.data.title).toUpperCase();
           }
 
@@ -185,12 +227,13 @@ export const BookListBlock: React.FC<BookListBlockProps> = ({ books, onSelectBoo
       });
 
       if (index !== -1) {
-          listRef.current.scrollToItem(index, 'start');
+          containerRef.current.scrollTop = index * itemSize;
       }
   };
 
-  // Altezza riga dinamica: 64px per lista normale (2 righe), 40px per lista autore (1 riga compatta)
-  const itemSize = sortBy === 'author' ? 40 : 64;
+  const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
+    setScrollTop(e.currentTarget.scrollTop);
+  };
 
   if (isLoading) {
       return (
@@ -211,42 +254,54 @@ export const BookListBlock: React.FC<BookListBlockProps> = ({ books, onSelectBoo
     );
   }
 
-  // Prepara i dati da passare alle righe
   const itemData: RowData = {
-      items, // Passiamo la lista elaborata (Headers + Books)
+      items,
       onSelectBook,
       selectedBookId,
       bookNotes,
-      sortBy
+      sortBy,
+      onRequestEditManualBook
   };
+
+  // Calcolo elementi visibili per la virtualizzazione
+  const overscan = 5;
+  const startIndex = Math.max(0, Math.floor(scrollTop / itemSize) - overscan);
+  const endIndex = Math.min(
+    items.length - 1, 
+    Math.ceil((scrollTop + containerHeight) / itemSize) + overscan
+  );
+
+  const visibleItems = [];
+  for (let i = startIndex; i <= endIndex; i++) {
+    visibleItems.push(
+      <BookRow 
+        key={i} 
+        index={i} 
+        data={itemData} 
+        style={{ top: i * itemSize, height: itemSize }} 
+      />
+    );
+  }
+
+  const totalHeight = items.length * itemSize;
 
   return (
     <div 
         className="h-full w-full relative flex transition-colors duration-300"
         style={{ backgroundColor: `rgba(15, 23, 42, ${uiOpacity})` }}
     >
-      
-      {/* Container Lista Virtualizzata */}
       <div className="flex-1 h-full pr-8">
-          <AutoSizer>
-            {({ height, width }: { height: number; width: number }) => (
-              <List
-                ref={listRef}
-                height={height}
-                width={width}
-                itemCount={items.length}
-                itemSize={itemSize} 
-                itemData={itemData}
-                className="no-scrollbar"
-                style={{ overflowX: 'hidden' }}
-              >
-                {BookRow}
-              </List>
-            )}
-          </AutoSizer>
+          <div 
+            ref={containerRef}
+            onScroll={handleScroll}
+            className="h-full w-full overflow-y-auto overflow-x-hidden no-scrollbar relative"
+          >
+            <div style={{ height: totalHeight, width: '100%', position: 'relative' }}>
+              {visibleItems}
+            </div>
+          </div>
       </div>
 
-      {/* Jump Bar Laterale */}
       <div className="absolute right-0 top-0 bottom-0 w-8 flex flex-col justify-between items-center py-2 bg-slate-900/20 backdrop-blur-sm z-10">
           {jumpLetters.map((letter) => (
               <button

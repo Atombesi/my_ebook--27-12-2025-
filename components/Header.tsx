@@ -6,7 +6,7 @@ import { SettingsModal } from './SettingsModal';
 import { InfoModal } from './InfoModal';
 import { loadSettings } from '../services/csvService';
 
-const APP_VERSION = "(Ver. 1.0)";
+const APP_VERSION = "(Ver. 2.2)";
 
 interface HeaderProps {
   metadata: IndexMetadata | null;
