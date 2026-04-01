@@ -31,6 +31,14 @@ export interface BookNoteEntry {
     note?: string;
     rating?: number; // 0, 1, 2, 3
     updatedAt?: string;
+    cartaceo?: boolean;
+    dataPrestito?: string;
+    destinatarioPrestito?: string;
+    storicoPrestiti?: Array<{
+        dataInizio: string;
+        dataFine: string;
+        destinatario: string;
+    }>;
 }
 
 // Dizionario: Chiave "Autore|Titolo" -> Oggetto Dati
@@ -38,3 +46,4 @@ export type BookNotes = Record<string, BookNoteEntry>;
 
 export type SortOption = 'title' | 'author';
 export type SortDirection = 'asc' | 'desc';
+export type FilterOption = 'ALL' | 'READ' | 'RATED' | 'EBOOK' | 'PAPERBACK' | 'LOANED' | 'MANUAL';

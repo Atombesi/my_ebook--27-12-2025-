@@ -1,5 +1,5 @@
 {
-  "name": "My_Ebook",
-  "description": "Project loaded via manual input",
+  "name": "MY_Ebook",
+  "description": "A book management application designed for portrait mode to browse and filter ebook collections from CSV data.",
   "requestFramePermissions": []
 }
