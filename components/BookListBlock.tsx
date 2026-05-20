@@ -1,6 +1,6 @@
 import React, { useRef, useEffect, useMemo, useState } from 'react';
 import { Book, BookNotes, SortOption, SortDirection } from '../types';
-import { User, CheckCircle2, Bookmark, Loader2, Book as BookIcon, UserMinus, Star, Edit2 } from 'lucide-react';
+import { User, CheckCircle2, Bookmark, Loader2, Book as BookIcon, UserMinus, Star, Edit2, Gem } from 'lucide-react';
 import { getBookKey } from '../services/csvService';
 
 // --- SOLUZIONE RADICALE E DEFINITIVA ---
@@ -83,6 +83,7 @@ const BookRow = ({ index, style, data }: { index: number, style: React.CSSProper
   }
 
   const isCartaceo = noteEntry?.cartaceo === true;
+  const isPregiata = noteEntry?.pregiata === true;
   const isLoaned = !!noteEntry?.destinatarioPrestito;
   const hasRating = (noteEntry?.rating || 0) > 0;
   const isManual = book.format === 'MANUAL';
@@ -107,7 +108,11 @@ const BookRow = ({ index, style, data }: { index: number, style: React.CSSProper
         >
             <div className={`flex items-center justify-between gap-2 overflow-hidden ${!isAuthorMode ? 'items-start' : ''}`}>
                 <div className={`truncate w-full min-w-0 flex items-center gap-1.5 ${titleClass}`}>
-                    {isCartaceo && <BookIcon className="w-3.5 h-3.5 text-blue-400 shrink-0" />}
+                    {isPregiata ? (
+                        <Gem className="w-3.5 h-3.5 text-purple-400 shrink-0" />
+                    ) : isCartaceo ? (
+                        <BookIcon className="w-3.5 h-3.5 text-blue-400 shrink-0" />
+                    ) : null}
                     {isLoaned && <UserMinus className="w-3.5 h-3.5 text-orange-400 shrink-0" />}
                     {hasRating && <Star className="w-3.5 h-3.5 text-yellow-500 fill-yellow-500 shrink-0" />}
                     <span className="truncate">{book.title}</span>
@@ -139,11 +144,25 @@ const BookRow = ({ index, style, data }: { index: number, style: React.CSSProper
 
 export const BookListBlock: React.FC<BookListBlockProps> = ({ books, onSelectBook, selectedBookId, sortBy, sortDirection, uiOpacity, bookNotes, isLoading, onRequestEditManualBook }) => {
   const containerRef = useRef<HTMLDivElement>(null);
+  const wheelRef = useRef<HTMLDivElement>(null);
   const [scrollTop, setScrollTop] = useState(0);
-  const [containerHeight, setContainerHeight] = useState(0);
+  const [containerHeight, setContainerHeight] = useState(typeof window !== 'undefined' ? window.innerHeight : 800);
   
-  const baseLetters = ['A', 'F', 'K', 'P', 'U', 'Z'];
-  const jumpLetters = sortDirection === 'asc' ? baseLetters : [...baseLetters].reverse();
+  const [activeLetter, setActiveLetter] = useState<string | null>(sortDirection === 'asc' ? '0' : 'Z');
+  const [isWheeling, setIsWheeling] = useState(false);
+  const wheelTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const jumpTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  
+  const alphabet = ['0', ...Array.from({ length: 26 }, (_, i) => String.fromCharCode(65 + i))];
+  const jumpLetters = sortDirection === 'asc' ? alphabet : [...alphabet].reverse();
+
+  // Imposta lo scroll iniziale della ghiera in alto
+  useEffect(() => {
+      if (wheelRef.current) {
+          wheelRef.current.scrollTop = 0;
+      }
+      setActiveLetter(jumpLetters[0]);
+  }, [sortDirection]);
 
   const items: ListItem[] = useMemo(() => {
       if (sortBy === 'title') {
@@ -212,6 +231,8 @@ export const BookListBlock: React.FC<BookListBlockProps> = ({ books, onSelectBoo
       if (!containerRef.current) return;
 
       const index = items.findIndex(item => {
+          if (letter === '0') return true;
+
           let textToCheck = '';
           if (item.type === 'header') {
               textToCheck = item.author.toUpperCase();
@@ -229,6 +250,41 @@ export const BookListBlock: React.FC<BookListBlockProps> = ({ books, onSelectBoo
       if (index !== -1) {
           containerRef.current.scrollTop = index * itemSize;
       }
+  };
+
+  const handleWheelScroll = (e: React.UIEvent<HTMLDivElement>) => {
+      const container = e.currentTarget;
+      const scrollY = container.scrollTop;
+      
+      let index = Math.round(scrollY / 40);
+      index = Math.max(0, Math.min(jumpLetters.length - 1, index));
+      
+      const letter = jumpLetters[index];
+      
+      if (letter !== activeLetter) {
+          setActiveLetter(letter);
+          setIsWheeling(true);
+          
+          if (wheelTimeoutRef.current) clearTimeout(wheelTimeoutRef.current);
+          wheelTimeoutRef.current = setTimeout(() => setIsWheeling(false), 1000);
+
+          if (jumpTimeoutRef.current) clearTimeout(jumpTimeoutRef.current);
+          jumpTimeoutRef.current = setTimeout(() => {
+              handleJumpTo(letter);
+          }, 150); // 150ms debounce
+      }
+  };
+
+  const handleLetterClick = (letter: string, index: number) => {
+      setActiveLetter(letter);
+      setIsWheeling(true);
+      if (wheelTimeoutRef.current) clearTimeout(wheelTimeoutRef.current);
+      wheelTimeoutRef.current = setTimeout(() => setIsWheeling(false), 1000);
+      
+      if (wheelRef.current) {
+          wheelRef.current.scrollTo({ top: index * 40, behavior: 'smooth' });
+      }
+      handleJumpTo(letter);
   };
 
   const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
@@ -264,7 +320,7 @@ export const BookListBlock: React.FC<BookListBlockProps> = ({ books, onSelectBoo
   };
 
   // Calcolo elementi visibili per la virtualizzazione
-  const overscan = 5;
+  const overscan = 25;
   const startIndex = Math.max(0, Math.floor(scrollTop / itemSize) - overscan);
   const endIndex = Math.min(
     items.length - 1, 
@@ -290,7 +346,7 @@ export const BookListBlock: React.FC<BookListBlockProps> = ({ books, onSelectBoo
         className="h-full w-full relative flex transition-colors duration-300"
         style={{ backgroundColor: `rgba(15, 23, 42, ${uiOpacity})` }}
     >
-      <div className="flex-1 h-full pr-8">
+      <div className="flex-1 h-full pr-12">
           <div 
             ref={containerRef}
             onScroll={handleScroll}
@@ -302,17 +358,32 @@ export const BookListBlock: React.FC<BookListBlockProps> = ({ books, onSelectBoo
           </div>
       </div>
 
-      <div className="absolute right-0 top-0 bottom-0 w-8 flex flex-col justify-between items-center py-2 bg-slate-900/20 backdrop-blur-sm z-10">
-          {jumpLetters.map((letter) => (
-              <button
-                key={letter}
-                onClick={() => handleJumpTo(letter)}
-                className="w-full flex-1 flex items-center justify-center text-[10px] font-bold text-slate-300 hover:text-emerald-400 hover:bg-slate-800/30 transition-colors drop-shadow-sm"
-              >
-                  {letter}
-              </button>
-          ))}
+      <div 
+        ref={wheelRef}
+        onScroll={handleWheelScroll}
+        className="absolute right-0 top-0 bottom-0 w-12 bg-slate-900/40 backdrop-blur-md z-10 overflow-y-auto no-scrollbar snap-y snap-mandatory border-l border-slate-700/30"
+      >
+          <div style={{ paddingTop: 10, paddingBottom: Math.max(0, containerHeight - 50) }}>
+              {jumpLetters.map((letter, index) => (
+                  <div
+                    key={letter}
+                    onClick={() => handleLetterClick(letter, index)}
+                    className={`h-10 w-full flex items-center justify-center text-sm font-bold snap-start cursor-pointer transition-all duration-200 ${activeLetter === letter ? 'text-emerald-400 scale-150 drop-shadow-[0_0_8px_rgba(16,185,129,0.8)]' : 'text-slate-400 hover:text-slate-200'}`}
+                  >
+                      {letter}
+                  </div>
+              ))}
+          </div>
       </div>
+
+      {/* Big Letter Overlay */}
+      {isWheeling && activeLetter && (
+          <div className="absolute inset-0 pointer-events-none flex items-center justify-center z-50">
+              <div className="bg-slate-900/80 backdrop-blur-md text-emerald-400 w-32 h-32 rounded-3xl flex items-center justify-center text-6xl font-bold shadow-2xl border border-emerald-500/30 animate-in fade-in zoom-in duration-200">
+                  {activeLetter}
+              </div>
+          </div>
+      )}
     </div>
   );
 };

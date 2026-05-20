@@ -183,6 +183,112 @@ export interface CheckResult {
     txtContent?: string;
 }
 
+export const checkAppVersion = async (
+    currentVersion: string,
+    zipBlob?: Blob
+): Promise<{ hasUpdate: boolean; remoteVersionStr?: string; error?: string }> => {
+    try {
+        const settings = loadSettings();
+        
+        let remoteVersion = '';
+
+        if (zipBlob) {
+            const zip = await JSZip.loadAsync(zipBlob);
+            const appVersionFileKey = Object.keys(zip.files).find(name => name.endsWith("AppVersion.txt") && !name.includes("__MACOSX"));
+            if (appVersionFileKey) {
+                const content = await zip.file(appVersionFileKey)?.async("string");
+                if (content) {
+                    remoteVersion = content.trim();
+                }
+            }
+        }
+
+        if (!remoteVersion) {
+            let appVersionUrl = '';
+            if (settings.lastUpdateUrl && settings.lastUpdateUrl.includes('Last_Update.txt')) {
+                 appVersionUrl = settings.lastUpdateUrl.replace('Last_Update.txt', 'AppVersion.txt');
+            } else if (settings.folderUrl && !settings.folderUrl.toLowerCase().includes('dropbox.com')) {
+                 const base = settings.folderUrl.endsWith('/') ? settings.folderUrl : settings.folderUrl + '/';
+                 appVersionUrl = base + 'AppVersion.txt';
+            } else if (settings.lastUpdateUrl) {
+                 const parts = settings.lastUpdateUrl.split('/');
+                 parts.pop();
+                 appVersionUrl = parts.join('/') + '/AppVersion.txt?dl=1';
+            }
+            
+            if (appVersionUrl) {
+                try {
+                    const response = await fetchViaProxy(appVersionUrl, settings.customProxyUrl);
+                    if (response.ok) {
+                        remoteVersion = (await response.text()).trim();
+                    }
+                } catch(e) {
+                    // Ignore and fallback to full zip
+                }
+            }
+        }
+
+        // Se ancora non l'abbiamo trovato e siamo su un sistema in cui i link diretti falliscono (es. Dropbox)
+        // Scarichiamo lo ZIP come facciamo per il full check dell'indice.
+        if (!remoteVersion && settings.folderUrl && !zipBlob) {
+            try {
+                const response = await fetchViaProxy(settings.folderUrl, settings.customProxyUrl);
+                if (response.ok) {
+                    const blob = await response.blob();
+                    const zip = await JSZip.loadAsync(blob);
+                    const appVersionFileKey = Object.keys(zip.files).find(name => name.endsWith("AppVersion.txt") && !name.includes("__MACOSX"));
+                    if (appVersionFileKey) {
+                        const content = await zip.file(appVersionFileKey)?.async("string");
+                        if (content) {
+                            remoteVersion = content.trim();
+                        }
+                    }
+                }
+            } catch (e) {
+                addLog(`[WARN] AppVersion ZIP check fallito: ${e}`);
+            }
+        }
+
+        if (remoteVersion) {
+            const extractVersion = (v: string) => {
+                // Prende solo la prima riga utile per evitare di leggere numeri nelle note
+                const firstLine = v.split('\n').find(line => line.trim().length > 0) || '';
+                const match = firstLine.match(/(\d+(\.\d+)*)/);
+                return match ? match[0] : '';
+            };
+
+            const cClean = extractVersion(currentVersion); 
+            const rClean = extractVersion(remoteVersion);
+
+            if (rClean && rClean !== cClean) {
+                const cvParts = cClean.split('.').map(Number);
+                const rvParts = rClean.split('.').map(Number);
+                
+                let isNewer = false;
+                for (let i = 0; i < Math.max(cvParts.length, rvParts.length); i++) {
+                    const c = cvParts[i] || 0;
+                    const r = rvParts[i] || 0;
+                    if (r > c) {
+                        isNewer = true;
+                        break;
+                    } else if (r < c) {
+                        isNewer = false;
+                        break;
+                    }
+                }
+                
+                if (isNewer) {
+                    return { hasUpdate: true, remoteVersionStr: rClean };
+                }
+            }
+            return { hasUpdate: false };
+        }
+        return { hasUpdate: false, error: 'Could not fetch AppVersion' };
+    } catch (e: any) {
+        return { hasUpdate: false, error: e.message };
+    }
+};
+
 // CHECK VERSION LOGIC
 export const checkVersion = async (
     currentDateStr: string,
@@ -252,7 +358,7 @@ export const checkVersion = async (
         if (remoteDate && currentDate && remoteDate > currentDate) {
              return { hasUpdate: true, remoteDateStr, updateSource: 'ZIP', zipBlob: blob };
         } else {
-             return { hasUpdate: false, remoteDateStr, updateSource: 'ZIP' };
+             return { hasUpdate: false, remoteDateStr, updateSource: 'ZIP', zipBlob: blob };
         }
 
     } catch (e: any) {

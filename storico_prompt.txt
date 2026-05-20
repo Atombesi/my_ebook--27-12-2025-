@@ -1,0 +1,79 @@
+======================================
+STORICO PROMPT - SESSIONE CORRENTE
+======================================
+
+Di seguito è riportato il resoconto fedele degli ultimi prompt (richieste) che mi hai inviato in questa sessione.
+
+--------------------------------------
+RICHIESTA 1
+--------------------------------------
+alcune Modifiche
+
+1) Vorrei utilizzare l'icona in alto a destra per avvisare si della presenza di un file indice piu aggiornato, che per la presenza di una nuova versione dell'applicazione.
+
+Visto che ora ha una doppia funzione, quando si clicca deve mostrare una finestra in cui posso selezionaree cosa aggiornare.
+Ovviamente se ho solo un aggiornamento da fare mostrero attivo solo quello.
+
+La finestra dovrebbe mostrare  2 Box. 
+
+Il primo box è Relativo al file indice. 
+Mostra la data del nuovo file ed un pulsante per scaricarlo
+
+Il Secondo box è Relativo al file della versione dell'app. 
+Mostra la versione  della nuova app ed un pulsante per scaricarla
+
+L'icona deve apparire arancione lampeggiante fintanto che esiste qualche cosa ancora da aggiornare.
+
+Quando tutto è aggiornato ritorna allo stato neutro
+
+Quando clicco nell'icona non lampeggiante, eseguo comunque un test sui 2 aggiornamenti.
+
+PS. non sembra funzionare la lettura del numero della versione.
+ho scritto il file "AppVersion.txt" e contiene la stringa 2.5
+tuttavia non ho nessun avviso
+
+Scrivendo solo in linguaggio naturale dimmi se hai capito ed attendi un ok per procedere al codice.
+
+--------------------------------------
+RICHIESTA 2
+--------------------------------------
+se torna comodo, Utilizza pure il modo con cui ora vai aprire il file indice perche quello, funziona
+Ok procedi pure con il codice
+
+--------------------------------------
+RICHIESTA 3
+--------------------------------------
+Sicuro di aver fatto i cambiamenti richiesti?
+1) Io vedo una nuova icona lmpeggiante  che mi indica che c'e una nuova versione.
+Tra l'altro se ci clicco sopra mi dice.. 
+Versione attuale (ver. 2.5)
+Nuova versione 2.5
+Devi confrontare solo i numeri! 
+
+Avevamo detto una sola icona.
+ti riassumo qui sotto quello che dovevi fare
+
+Unica Icona di Aggiornamento: Eliminerò l'iconcina separata (a forma di smartphone) introdotta prima, centralizzando tutto nell'icona principale con la freccia di download in alto a destra.
+Stato Lampeggiante: L'icona diventerà arancione e inizierà a lampeggiare se, dal controllo in background, emergerà che c'è almeno un aggiornamento disponibile (o l'Indice, o una nuova versione dell'App, o entrambi).
+Finestra Dedicata: Cliccando sull'icona:
+Se l'icona non lampeggiava (stato neutro), l'applicazione farà partire comunque il controllo di verifica (test) su entrambi i file, per poi mostrare la finestra.
+Si aprirà una finestra personalizzata contenente due box separati:
+Box Indice: Mostrerà la data del nuovo indice e un pulsante per eseguire lo scaricamento e sincronizzazione.
+Box App: Mostrerà la nuova versione trovata (es. 2.5) e un pulsante per aprire sul browser la tua cartella Cloud.
+Bottoni e Stati: Se un componente è già aggiornato all'ultima versione, il suo relativo box segnalerà "Già aggiornato" o disabiliterà il download attivo per farti capire la situazione in maniera comoda. Quando avrai aggiornato tutto l'aggiornabile, l'icona smetterà di lampeggiare.
+
+in aggiunta ti ricordo che devi confrontare solo i numeri delle versioni dell'app e non la stringa intera
+
+--------------------------------------
+RICHIESTA 4
+--------------------------------------
+Ottimo. Ora funzione.
+Vorrei pero che , dopo aver premuto il pulsante scarica per eseguire il download del nuovo indice, la finestra non si chiudesse improvvisamente ma mi mostrasse un messaggio del tipo... "Indice aggiornato correttamente" e la data dell'indice aggiornato.
+Anche quando si fa il check, anche se l'indice è aggiornato, scrivimi nella finestra la data dell'indice locale
+
+--------------------------------------
+RICHIESTA 5
+--------------------------------------
+una domanda. é possibile avere un resoconto fedele di tutti i prompt (Domande e risposte) che ci siamo scambiati?
+se si, come si puo procedere?
+è possibile averli in n file di teesto che poi posso scaricare?

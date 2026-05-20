@@ -195,7 +195,7 @@ export const loadData = (): AppData => {
     }
   }
 
-  const books: Book[] = [];
+  const booksMap = new Map<string, Book>();
 
   for (let i = startIndex; i < lines.length; i++) {
     const line = lines[i];
@@ -207,15 +207,25 @@ export const loadData = (): AppData => {
       const format = parts[2].trim();
 
       if (author && title) {
-          books.push({
-            id: generateId(),
-            author: author,
-            title: title,
-            format: format
-          });
+          const key = getRawKey(author, title);
+          if (!booksMap.has(key)) {
+              booksMap.set(key, {
+                id: generateId(),
+                author: author,
+                title: title,
+                format: format
+              });
+          } else {
+              const existingBook = booksMap.get(key)!;
+              if (format && !existingBook.format.includes(format)) {
+                  existingBook.format += `, ${format}`;
+              }
+          }
       }
     }
   }
+
+  const books = Array.from(booksMap.values());
 
   return { metadata, books };
 };

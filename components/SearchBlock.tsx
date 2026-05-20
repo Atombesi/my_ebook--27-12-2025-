@@ -9,6 +9,10 @@ interface SearchBlockProps {
   isBusy: boolean;
   uiOpacity: number;
   
+  // Search Field
+  searchField: 'all' | 'title' | 'author';
+  setSearchField: (field: 'all' | 'title' | 'author') => void;
+
   // Sort Props
   sortBy: SortOption;
   setSortBy: (sort: SortOption) => void;
@@ -16,7 +20,7 @@ interface SearchBlockProps {
   setSortDirection: (dir: SortDirection) => void;
 
   // Filter Props
-  filterBy: FilterOption;
+  filterBy: FilterOption[];
   onOpenFilterModal: () => void;
 
   // Author & Fav Props (Migrated from AuthorComboBlock)
@@ -36,6 +40,8 @@ export const SearchBlock: React.FC<SearchBlockProps> = ({
   onSearch,
   isBusy,
   uiOpacity,
+  searchField,
+  setSearchField,
   sortBy,
   setSortBy,
   sortDirection,
@@ -167,15 +173,17 @@ export const SearchBlock: React.FC<SearchBlockProps> = ({
               onClick={onOpenFilterModal}
               className={`
                   h-12 flex-1 rounded-xl border flex items-center justify-center transition-all active:scale-95 relative
-                  ${filterBy !== 'ALL' 
+                  ${!filterBy.includes('ALL') 
                       ? 'bg-emerald-600 border-emerald-400 text-white shadow-emerald-900/30' 
                       : 'bg-slate-800/60 border-slate-700/50 text-slate-300 hover:bg-slate-700'}
               `}
               title="Filtra libri"
           >
               <Filter className="w-6 h-6" />
-              {filterBy !== 'ALL' && (
-                  <div className="absolute top-1 right-1 w-2.5 h-2.5 bg-white rounded-full border border-emerald-600"></div>
+              {!filterBy.includes('ALL') && (
+                  <div className="absolute top-1 right-1 flex items-center justify-center min-w-[16px] h-[16px] px-0.5 bg-white text-emerald-700 text-[9px] font-bold rounded-full border border-slate-900 shadow-sm">
+                      {filterBy.length}
+                  </div>
               )}
           </button>
 
@@ -190,17 +198,41 @@ export const SearchBlock: React.FC<SearchBlockProps> = ({
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="Cerca libro o autore..."
-            className="w-full bg-slate-800/80 text-slate-100 rounded-xl py-3 pl-4 pr-10 border border-slate-600/50 focus:outline-none focus:ring-2 focus:ring-emerald-500 shadow-inner transition-colors placeholder-slate-500"
+            placeholder={
+                searchField === 'all' ? "Cerca libro o autore..." : 
+                searchField === 'title' ? "Cerca per TITOLO..." : 
+                "Cerca per AUTORE..."
+            }
+            className="w-full bg-slate-800/80 text-slate-100 rounded-xl py-3 pl-4 pr-[80px] border border-slate-600/50 focus:outline-none focus:ring-2 focus:ring-emerald-500 shadow-inner transition-colors placeholder-slate-500"
           />
-           {searchTerm.length > 0 && (
-                <button 
-                    onClick={handleClear}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 text-slate-400 hover:text-white bg-slate-700/50 hover:bg-slate-600 rounded-full transition-colors"
-                >
-                    <X className="w-4 h-4" />
-                </button>
-           )}
+           
+           <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
+               {searchTerm.length > 0 && (
+                    <button 
+                        onClick={handleClear}
+                        className="p-1.5 text-slate-400 hover:text-white bg-slate-700/50 hover:bg-slate-600 rounded-full transition-colors"
+                    >
+                        <X className="w-4 h-4" />
+                    </button>
+               )}
+               {/* Search Scope Toggle */}
+               <button
+                    onClick={() => {
+                        if (searchField === 'all') setSearchField('author');
+                        else if (searchField === 'author') setSearchField('title');
+                        else setSearchField('all');
+                    }}
+                    className={`
+                        text-[10px] font-bold uppercase px-2 py-1 rounded transition-colors
+                        ${searchField === 'all' ? 'bg-slate-700 text-slate-300' : 
+                          searchField === 'author' ? 'bg-emerald-600/80 text-white' : 
+                          'bg-blue-600/80 text-white'}
+                    `}
+                    title="Cambia campo di ricerca"
+               >
+                   {searchField === 'all' ? 'Tutto' : searchField === 'author' ? 'Autore' : 'Titolo'}
+               </button>
+           </div>
         </div>
 
         {/* PULSANTE AGGIUNGI MANUALE */}

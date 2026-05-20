@@ -1,7 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
 import type { Book, BookNotes, BookStatus } from '../types';
-import { Check, CheckCircle2, Bookmark, FileSignature, CircleDashed, XCircle, Star, Globe, Book as BookIcon, UserCheck, UserMinus } from 'lucide-react';
+import { Check, CheckCircle2, Bookmark, FileSignature, CircleDashed, XCircle, Star, Globe, Book as BookIcon, UserCheck, UserMinus, Gem, DollarSign, ExternalLink, Image as ImageIcon } from 'lucide-react';
 import { getBookKey } from '../services/csvService';
+import { loadImage } from '../services/imageService';
 
 interface DetailBlockProps {
   book: Book | null;
@@ -12,7 +13,7 @@ interface DetailBlockProps {
   onRequestNoteEdit: (book: Book) => void;
   onRequestLoanEdit: (book: Book) => void;
   onRateBook: (book: Book, rating: number) => void;
-  onToggleCartaceo: (book: Book, isCartaceo: boolean) => void;
+  onRequestPhysicalEdit: (book: Book) => void;
 }
 
 export const DetailBlock: React.FC<DetailBlockProps> = ({ 
@@ -23,13 +24,15 @@ export const DetailBlock: React.FC<DetailBlockProps> = ({
     onRequestNoteEdit,
     onRequestLoanEdit,
     onRateBook,
-    onToggleCartaceo
+    onRequestPhysicalEdit
 }) => {
   const [copiedField, setCopiedField] = useState<string | null>(null);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   
   // Stati per la ricerca Web Smart
   const [webSearchState, setWebSearchState] = useState<{ visible: boolean; query: string }>({ visible: false, query: '' });
+  const [bookImage, setBookImage] = useState<string | null>(null);
+  const [isImageModalOpen, setIsImageModalOpen] = useState(false);
   
   const pressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -42,6 +45,15 @@ export const DetailBlock: React.FC<DetailBlockProps> = ({
   const currentStatus = currentEntry?.status;
   const currentRating = currentEntry?.rating || 0;
   const hasNote = currentEntry?.note && currentEntry.note.trim().length > 0;
+
+  // Carica immagine se presente
+  useEffect(() => {
+      if (currentEntry?.hasImage && currentKey) {
+          loadImage(currentKey).then(img => setBookImage(img));
+      } else {
+          setBookImage(null);
+      }
+  }, [currentKey, currentEntry?.hasImage]);
 
   // Chiudi menu se clicco fuori
   useEffect(() => {
@@ -227,13 +239,13 @@ export const DetailBlock: React.FC<DetailBlockProps> = ({
                             <button 
                                 onClick={(e) => { 
                                     e.stopPropagation(); 
-                                    if(book) onToggleCartaceo(book, !currentEntry?.cartaceo); 
+                                    if(book) onRequestPhysicalEdit(book); 
                                     setIsMenuOpen(false);
                                 }}
                                 className={`flex items-center gap-3 px-4 py-3 text-sm font-medium transition-colors hover:bg-slate-800 border-t border-slate-800 ${currentEntry?.cartaceo ? 'text-emerald-400' : 'text-slate-400'}`}
                             >
                                 <BookIcon className={`w-4 h-4 ${currentEntry?.cartaceo ? 'text-emerald-500' : ''}`} />
-                                Cartaceo
+                                Edizione Fisica
                             </button>
 
                             {/* RATING SECTION (Solo se LETTO) */}
@@ -320,6 +332,17 @@ export const DetailBlock: React.FC<DetailBlockProps> = ({
                             <span className="text-white font-bold ml-2 shrink-0 whitespace-nowrap">
                                 ({book.format})
                             </span>
+
+                            {/* ICONA PREGIATA */}
+                            {currentEntry?.pregiata && (
+                                <button
+                                    onClick={(e) => { e.stopPropagation(); setIsImageModalOpen(true); }}
+                                    className="ml-2 p-1.5 rounded-full border shadow-sm transition-all active:scale-95 bg-purple-900/50 border-purple-500/50 text-purple-400 hover:text-purple-300 hover:bg-purple-800/50"
+                                    title="Dettagli Edizione Pregiata"
+                                >
+                                    <Gem className="w-3.5 h-3.5" />
+                                </button>
+                            )}
                         </div>
                         
                         {copiedField === 'author' && (
@@ -331,7 +354,7 @@ export const DetailBlock: React.FC<DetailBlockProps> = ({
                 </div>
 
                 {/* DESTRA: PULSANTE RICERCA WEB */}
-                <div className="flex flex-col gap-2 shrink-0 items-center">
+                <div className="flex flex-col gap-1 shrink-0 items-center justify-start mt-1">
                     <button
                         onClick={() => {
                             if (webSearchState.query) {
@@ -343,7 +366,7 @@ export const DetailBlock: React.FC<DetailBlockProps> = ({
                             }
                         }}
                         className={`
-                            mt-1 p-3 rounded-full border shadow-sm transition-all active:scale-95 relative
+                            p-3 rounded-full border shadow-sm transition-all active:scale-95 relative
                             ${webSearchState.visible 
                                 ? 'bg-sky-600 border-sky-400 text-white shadow-sky-900/50 animate-pulse' 
                                 : 'bg-slate-800/50 border-slate-700/50 text-slate-500 hover:text-sky-400'}
@@ -366,6 +389,70 @@ export const DetailBlock: React.FC<DetailBlockProps> = ({
             <div className="h-24 flex flex-col items-center justify-center text-slate-400 gap-2 opacity-60">
                 <Bookmark className="w-8 h-8 stroke-1 drop-shadow-md" />
                 <p className="text-xs italic drop-shadow-md">Seleziona un libro</p>
+            </div>
+        )}
+
+        {/* MODALE IMMAGINE PREGIATA */}
+        {isImageModalOpen && currentEntry?.pregiata && (
+            <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm" onClick={() => setIsImageModalOpen(false)}>
+                <div 
+                    className="bg-slate-900 border border-purple-500/30 rounded-2xl p-4 max-w-sm w-full max-h-[90vh] overflow-y-auto flex flex-col items-center gap-4 relative shadow-2xl"
+                    onClick={e => e.stopPropagation()}
+                >
+                    <button 
+                        onClick={() => setIsImageModalOpen(false)}
+                        className="absolute top-2 right-2 p-2 text-slate-400 hover:text-white bg-slate-800 rounded-full z-10"
+                    >
+                        <XCircle className="w-6 h-6" />
+                    </button>
+
+                    <div className="flex items-center gap-2 text-purple-400 mb-2 mt-4">
+                        <Gem className="w-5 h-5" />
+                        <h3 className="font-bold text-lg">Edizione Particolare</h3>
+                    </div>
+
+                    {bookImage ? (
+                        <div className="w-full aspect-[2/3] rounded-lg overflow-hidden border border-slate-700 shadow-inner bg-black shrink-0">
+                            <img src={bookImage} alt="Copertina" className="w-full h-full object-contain" />
+                        </div>
+                    ) : currentEntry.hasImage ? (
+                        <div className="w-full aspect-[2/3] rounded-lg bg-slate-800 border border-slate-700 flex flex-col items-center justify-center animate-pulse gap-2 shrink-0">
+                            <ImageIcon className="w-10 h-10 text-slate-600" />
+                            <span className="text-slate-500 text-sm">Caricamento...</span>
+                        </div>
+                    ) : (
+                        <div className="w-full aspect-[2/3] rounded-lg bg-slate-800/50 border border-slate-700 flex flex-col items-center justify-center gap-2 shrink-0">
+                            <ImageIcon className="w-10 h-10 text-slate-600 opacity-50" />
+                            <span className="text-slate-500 text-sm italic">Nessuna immagine</span>
+                        </div>
+                    )}
+
+                    <div className="w-full flex items-stretch justify-between gap-2 mt-2 h-12">
+                        {currentEntry.valore && (
+                            <div className="flex items-center justify-center gap-1 text-yellow-400 bg-black px-4 rounded-lg border border-yellow-400/20 shrink-0">
+                                <DollarSign className="w-4 h-4" />
+                                <span className="font-bold">{currentEntry.valore}</span>
+                            </div>
+                        )}
+                        
+                        {currentEntry.linkWeb && (
+                            <button 
+                                onClick={() => window.open(currentEntry.linkWeb, '_blank')}
+                                className="flex-1 flex items-center justify-center gap-2 text-sky-400 hover:text-sky-300 bg-sky-400/10 rounded-lg font-medium border border-sky-400/20 transition-colors"
+                            >
+                                <ExternalLink className="w-4 h-4" />
+                                <span className="text-sm">Open Link</span>
+                            </button>
+                        )}
+
+                        <button 
+                            onClick={() => setIsImageModalOpen(false)}
+                            className="flex items-center justify-center px-4 bg-slate-800 hover:bg-slate-700 text-white rounded-lg font-bold transition-colors border border-slate-700 shrink-0"
+                        >
+                            <XCircle className="w-5 h-5" />
+                        </button>
+                    </div>
+                </div>
             </div>
         )}
       </div>

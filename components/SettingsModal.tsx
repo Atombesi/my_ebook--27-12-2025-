@@ -8,6 +8,8 @@ import { STORAGE_KEY_NOTE } from '../constants';
 import { FilePicker } from '@capawesome/capacitor-file-picker';
 import { Filesystem, Directory, Encoding } from '@capacitor/filesystem';
 import { Share } from '@capacitor/share';
+import JSZip from 'jszip';
+import { getAllImages, restoreImages } from '../services/imageService';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -47,7 +49,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, h
 
   const [lastBackup, setLastBackup] = useState<BackupInfo | null>(null);
   
-  const [exportPreviewMode, setExportPreviewMode] = useState(false); 
   const [pendingFilename, setPendingFilename] = useState('');
   const [diskSaveConfirm, setDiskSaveConfirm] = useState<{filename: string} | null>(null);
   const [importConfirm, setImportConfirm] = useState<{name: string, content: string} | null>(null);
@@ -67,6 +68,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, h
   const [showBackup, setShowBackup] = useState(false);
   const [showQrCode, setShowQrCode] = useState(false);
   const [qrInput, setQrInput] = useState('');
+
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [processingStatus, setProcessingStatus] = useState('');
+  const [zipImportPrompt, setZipImportPrompt] = useState(false);
+  const [shareOptionsPrompt, setShareOptionsPrompt] = useState(false);
 
   useEffect(() => {
     if (isOpen) {
@@ -94,7 +100,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, h
 
       setUiOpacity(settings.uiOpacity !== undefined ? settings.uiOpacity : 0.3);
       setDebugMode(settings.debugMode || false);
-      setExportPreviewMode(false);
       setImportConfirm(null);
       setDiskSaveConfirm(null);
       setShowDbInspector(false);
@@ -219,23 +224,59 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, h
     }
     setShowDbInspector(true);
   };
-  const handleExportSharePrepare = () => { setPendingFilename(`backup_${new Date().toISOString().split('T')[0]}.json`); setExportPreviewMode(true); };
-  const handleExportShareExecute = async () => {
+  const handleExportSharePrepare = () => { setPendingFilename(`backup_${new Date().toISOString().split('T')[0]}.json`); setShareOptionsPrompt(true); };
+  const handleExportShareExecute = async (includeImages: boolean) => {
+      setShareOptionsPrompt(false);
+      setIsProcessing(true);
+      setProcessingStatus('Preparazione file JSON in corso...');
       const json = exportBackupData();
       const filename = pendingFilename;
       try {
         const res = await Filesystem.writeFile({ path: filename, data: json, directory: Directory.Cache, encoding: Encoding.UTF8 });
-        await Share.share({ title: 'Backup', files: [res.uri] });
-        saveLastBackupInfo(filename); setLastBackup(getLastBackupInfo()); setExportPreviewMode(false); setBackupSuccess({ isOpen: true, mode: 'EXPORT', filename, resultLabel: 'Condiviso' });
-      } catch (e:any) { alert("Errore Export: " + e.message); }
+        const filesToShare = [res.uri];
+
+        if (includeImages) {
+            setProcessingStatus('Preparazione file ZIP immagini in corso...');
+            const images = await getAllImages();
+            if (Object.keys(images).length > 0) {
+                const zip = new JSZip();
+                for (const [key, base64] of Object.entries(images)) {
+                    zip.file(`${key}.txt`, base64);
+                }
+                const zipBase64 = await zip.generateAsync({ type: 'base64' });
+                const zipFilename = filename.replace('.json', '.zip');
+                const zipRes = await Filesystem.writeFile({ path: zipFilename, data: zipBase64, directory: Directory.Cache });
+                filesToShare.push(zipRes.uri);
+            }
+        }
+
+        setProcessingStatus('Apertura condivisione...');
+        await Share.share({ title: 'Backup', files: filesToShare });
+        saveLastBackupInfo(filename); setLastBackup(getLastBackupInfo()); setBackupSuccess({ isOpen: true, mode: 'EXPORT', filename, resultLabel: 'Condiviso' });
+      } catch (e:any) { alert("Errore Export: " + e.message); } finally { setIsProcessing(false); setProcessingStatus(''); }
   };
   const handleSaveDiskPrepare = () => { setDiskSaveConfirm({ filename: `backup_${new Date().toISOString().split('T')[0]}.json` }); };
   const handleSaveDiskExecute = async () => {
       if(!diskSaveConfirm) return;
+      setIsProcessing(true);
       try {
+          setProcessingStatus('Salvataggio delle note in corso...');
           await Filesystem.writeFile({ path: diskSaveConfirm.filename, data: exportBackupData(), directory: Directory.Documents, encoding: Encoding.UTF8 });
+          
+          setProcessingStatus('Salvataggio delle immagini in corso...');
+          const images = await getAllImages();
+          if (Object.keys(images).length > 0) {
+              const zip = new JSZip();
+              for (const [key, base64] of Object.entries(images)) {
+                  zip.file(`${key}.txt`, base64);
+              }
+              const zipBase64 = await zip.generateAsync({ type: 'base64' });
+              const zipFilename = diskSaveConfirm.filename.replace('.json', '.zip');
+              await Filesystem.writeFile({ path: zipFilename, data: zipBase64, directory: Directory.Documents });
+          }
+
           saveLastBackupInfo(diskSaveConfirm.filename); setLastBackup(getLastBackupInfo()); setDiskSaveConfirm(null); setBackupSuccess({ isOpen: true, mode: 'EXPORT', filename: diskSaveConfirm.filename, resultLabel: 'Salvato' });
-      } catch(e:any) { alert("Errore: " + e.message); }
+      } catch(e:any) { alert("Errore: " + e.message); } finally { setIsProcessing(false); setProcessingStatus(''); }
   };
   const decodeBase64 = (str: string) => {
     try { return new TextDecoder('utf-8').decode(Uint8Array.from(atob(str), c => c.charCodeAt(0))); } catch { return ""; }
@@ -248,11 +289,50 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, h
   };
   const handleExecuteImport = () => {
       if(!importConfirm) return;
+      setIsProcessing(true);
+      setProcessingStatus('Importazione delle note in corso...');
       if(importBackupData(importConfirm.content)) {
            const s = loadSettings(); setUiOpacity(s.uiOpacity||0.3); setDebugMode(s.debugMode||false); setHasConfiguredUrl(!!s.folderUrl); setHasConfiguredProxy(!!s.customProxyUrl); setTempUpdateUrl(s.lastUpdateUrl||'');
            if(onSave) onSave(s); if(onDataRestored) onDataRestored();
-           setBackupSuccess({ isOpen: true, mode: 'IMPORT', filename: importConfirm.name, resultLabel: 'Successo' });
-      } else alert("Backup non valido");
+           
+           setIsProcessing(false);
+           setProcessingStatus('');
+           setZipImportPrompt(true);
+      } else {
+          setIsProcessing(false);
+          setProcessingStatus('');
+          alert("Backup non valido");
+      }
+  };
+
+  const handleZipImportConfirm = async (wantsImages: boolean) => {
+      setZipImportPrompt(false);
+      if (wantsImages) {
+          try {
+              const res = await FilePicker.pickFiles({ types: ['application/zip', 'application/x-zip-compressed'], readData: true });
+              if (res.files[0]?.data) {
+                  setIsProcessing(true);
+                  setProcessingStatus('Estrazione delle immagini in corso...');
+                  const zip = new JSZip();
+                  const loadedZip = await zip.loadAsync(res.files[0].data, { base64: true });
+                  const imagesToRestore: Record<string, string> = {};
+                  for (const filename of Object.keys(loadedZip.files)) {
+                      if (filename.endsWith('.txt')) {
+                          const key = filename.replace('.txt', '');
+                          const content = await loadedZip.files[filename].async('string');
+                          imagesToRestore[key] = content;
+                      }
+                  }
+                  await restoreImages(imagesToRestore);
+              }
+          } catch (e) {
+              console.log("Zip import cancelled or failed", e);
+          } finally {
+              setIsProcessing(false);
+              setProcessingStatus('');
+          }
+      }
+      setBackupSuccess({ isOpen: true, mode: 'IMPORT', filename: importConfirm?.name || 'backup.json', resultLabel: 'Successo' });
       setImportConfirm(null);
   };
 
@@ -264,6 +344,48 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, h
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+      {/* Processing Modal */}
+      {isProcessing && (
+          <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in zoom-in duration-200">
+              <div className="bg-slate-900 border border-slate-700 w-full max-w-sm rounded-xl shadow-2xl overflow-hidden flex flex-col p-6 items-center text-center gap-4">
+                  <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-blue-500"></div>
+                  <h3 className="text-xl font-bold text-white">Attendere...</h3>
+                  <p className="text-sm text-slate-300">{processingStatus}</p>
+              </div>
+          </div>
+      )}
+
+      {/* Zip Import Prompt */}
+      {zipImportPrompt && (
+          <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in zoom-in duration-200">
+              <div className="bg-slate-900 border border-slate-700 w-full max-w-sm rounded-xl shadow-2xl overflow-hidden flex flex-col p-6 items-center text-center gap-4">
+                  <Database className="w-8 h-8 text-blue-400" />
+                  <h3 className="text-xl font-bold text-white">Note importate con successo</h3>
+                  <p className="text-sm text-slate-300">Hai anche un file ZIP con le immagini da ripristinare?</p>
+                  <div className="flex gap-3 w-full mt-2">
+                      <button onClick={() => handleZipImportConfirm(false)} className="flex-1 py-3 border border-slate-700 rounded-lg text-slate-300 hover:bg-slate-800 transition-colors">No</button>
+                      <button onClick={() => handleZipImportConfirm(true)} className="flex-1 py-3 bg-blue-600 hover:bg-blue-500 text-white rounded-lg font-bold transition-colors">Sì</button>
+                  </div>
+              </div>
+          </div>
+      )}
+
+      {/* Share Options Prompt */}
+      {shareOptionsPrompt && (
+          <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in zoom-in duration-200">
+              <div className="bg-slate-900 border border-slate-700 w-full max-w-sm rounded-xl shadow-2xl overflow-hidden flex flex-col p-6 items-center text-center gap-4">
+                  <Database className="w-8 h-8 text-blue-400" />
+                  <h3 className="text-xl font-bold text-white">Opzioni di Condivisione</h3>
+                  <p className="text-sm text-slate-300">Vuoi condividere solo il testo (JSON) o anche le immagini (ZIP)?</p>
+                  <div className="flex gap-3 w-full mt-2">
+                      <button onClick={() => handleExportShareExecute(false)} className="flex-1 py-3 border border-slate-700 rounded-lg text-slate-300 hover:bg-slate-800 transition-colors">Solo JSON</button>
+                      <button onClick={() => handleExportShareExecute(true)} className="flex-1 py-3 bg-blue-600 hover:bg-blue-500 text-white rounded-lg font-bold transition-colors">JSON + ZIP</button>
+                  </div>
+                  <button onClick={() => setShareOptionsPrompt(false)} className="w-full mt-2 py-2 text-slate-400 hover:text-white transition-colors">Annulla</button>
+              </div>
+          </div>
+      )}
+
       {/* Disk Save Confirm Modal */}
       {diskSaveConfirm && (
           <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in zoom-in duration-200">
@@ -369,32 +491,23 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, h
                   {/* BACKUP & VISUALS ACCORDIONS (SAME AS BEFORE) */}
                   <div className="flex flex-col gap-2">
                       <button onClick={() => setShowBackup(!showBackup)} className="flex items-center justify-between w-full p-3 bg-slate-800/50 rounded-lg border border-slate-700/50 text-slate-300 font-medium text-sm">
-                          <div className="flex items-center gap-2"><Database className="w-4 h-4 text-blue-400" />Backup & Ripristino</div>{showBackup ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+                          <div className="flex items-center gap-2"><Database className="w-4 h-4 text-blue-400" />Backup & Ripristino note</div>{showBackup ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
                       </button>
                       {showBackup && (
                         <div className="space-y-3 p-3 bg-slate-950/30 rounded border border-slate-800/50">
-                             {!exportPreviewMode ? (
-                                <>
-                                    <div className="flex gap-2">
-                                        <button onClick={handleExportSharePrepare} className="flex-1 bg-slate-800 border border-slate-700 p-2 rounded-lg text-[10px] text-slate-300">Condividi</button>
-                                        <button onClick={handleSaveDiskPrepare} className="flex-1 bg-slate-800 border border-slate-700 p-2 rounded-lg text-[10px] text-slate-300">Salva Disco</button>
-                                        <button onClick={handleImportClick} className="flex-1 bg-slate-800 border border-slate-700 p-2 rounded-lg text-[10px] text-slate-300">Importa</button>
-                                    </div>
-                                    <button onClick={handleOpenInspector} className="w-full py-1.5 border border-slate-700 rounded text-slate-500 text-[10px] mt-2">DB Inspector</button>
-                                </>
-                             ) : (
-                                <div className="text-center text-slate-400 text-xs">
-                                     <p>Confermi export?</p>
-                                     <div className="flex gap-2 mt-2"><button onClick={()=>setExportPreviewMode(false)} className="flex-1 py-2 border rounded">No</button><button onClick={handleExportShareExecute} className="flex-1 py-2 bg-emerald-600 text-white rounded">Si</button></div>
-                                </div>
-                             )}
+                            <div className="flex gap-2">
+                                <button onClick={handleExportSharePrepare} className="flex-1 bg-slate-800 border border-slate-700 p-2 rounded-lg text-[10px] text-slate-300">Condividi</button>
+                                <button onClick={handleSaveDiskPrepare} className="flex-1 bg-slate-800 border border-slate-700 p-2 rounded-lg text-[10px] text-slate-300">Salva Disco</button>
+                                <button onClick={handleImportClick} className="flex-1 bg-slate-800 border border-slate-700 p-2 rounded-lg text-[10px] text-slate-300">Importa</button>
+                            </div>
+                            <button onClick={handleOpenInspector} className="w-full py-1.5 border border-slate-700 rounded text-slate-500 text-[10px] mt-2">DB Inspector</button>
                         </div>
                       )}
                   </div>
 
                   <div className="flex flex-col gap-2">
                       <button onClick={() => setShowVisuals(!showVisuals)} className="flex items-center justify-between w-full p-3 bg-slate-800/50 rounded-lg border border-slate-700/50 text-slate-300 font-medium text-sm">
-                          <div className="flex items-center gap-2"><Sliders className="w-4 h-4 text-emerald-400" />Aspetto</div>{showVisuals ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+                          <div className="flex items-center gap-2"><Sliders className="w-4 h-4 text-emerald-400" />Trasparenza sfondo</div>{showVisuals ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
                       </button>
                       {showVisuals && ( <div className="p-3 bg-slate-950/30 rounded border border-slate-800/50"> <input type="range" min="0" max="1" step="0.05" value={uiOpacity} onChange={(e) => setUiOpacity(parseFloat(e.target.value))} className="w-full h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-emerald-500"/> </div> )}
                   </div>
@@ -434,63 +547,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, h
                       )}
                   </div>
 
-                  <button onClick={() => setCurrentView('DOWNLOAD_SETTINGS')} className="flex items-center justify-between w-full p-3 bg-slate-800/50 rounded-lg border border-slate-700/50 text-slate-300 font-medium text-sm">
-                      <div className="flex items-center gap-2"><CloudCog className="w-4 h-4 text-purple-400" />Index Download</div><ChevronRight className="w-4 h-4 text-slate-500" />
-                  </button>
-              </>
-          )}
-
-          {currentView === 'DOWNLOAD_SETTINGS' && (
-              <div className="flex flex-col gap-4">
-                  {/* DROPBOX FOLDER */}
-                  <div className="flex flex-col gap-2">
-                      <button onClick={() => setShowUrlInput(!showUrlInput)} className="flex items-center justify-between w-full p-3 bg-slate-800/50 rounded-lg border border-slate-700/50 text-slate-300 font-medium text-sm">
-                          <div className="flex items-center gap-2"><FolderOpen className="w-4 h-4 text-emerald-400" />Cartella Dropbox</div>{showUrlInput ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
-                      </button>
-                      {showUrlInput && (
-                        <div className="space-y-3 p-2 bg-slate-950/30 rounded border border-slate-800/50">
-                            <div className="flex justify-between px-1 text-[11px] text-slate-400"><span>Stato:</span>{hasConfiguredUrl ? <span className="text-emerald-400 font-bold">Configurato</span> : <span className="text-red-400">Mancante</span>}</div>
-                            <div className="relative"><textarea value={tempUrlInput} onChange={(e) => setTempUrlInput(e.target.value)} className="w-full bg-slate-800 border border-slate-700 rounded p-2 text-xs text-slate-200 h-16 resize-none" placeholder="https://dropbox.com/scl/fo/..."/>{showLinkSaveButton && (<button onClick={handleSaveUrlOnly} className="absolute bottom-2 right-2 bg-emerald-600 text-white px-2 py-1 rounded text-[10px]">Salva</button>)}</div>
-                        </div>
-                      )}
-                  </div>
-
-                  {/* LAST UPDATE URL (NEW) */}
-                  <div className="flex flex-col gap-2">
-                      <button onClick={() => setShowUpdateUrlInput(!showUpdateUrlInput)} className="flex items-center justify-between w-full p-3 bg-slate-800/50 rounded-lg border border-slate-700/50 text-slate-300 font-medium text-sm">
-                          <div className="flex items-center gap-2"><FileText className="w-4 h-4 text-sky-400" />File Versione (Opzionale)</div>{showUpdateUrlInput ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
-                      </button>
-                      {showUpdateUrlInput && (
-                        <div className="space-y-3 p-2 bg-slate-950/30 rounded border border-slate-800/50 animate-in fade-in slide-in-from-top-2">
-                            <p className="text-[10px] text-slate-500 leading-tight">Link diretto a <b>Last_Update.txt</b>. Se presente, l'app scaricherà solo questo file per controllare gli aggiornamenti.</p>
-                            <div className="flex flex-col gap-2">
-                                <input type="text" value={tempUpdateUrl} onChange={(e) => setTempUpdateUrl(e.target.value)} className="w-full bg-slate-800 border border-slate-700 rounded p-2 text-xs text-slate-200 font-mono" placeholder="https://dropbox.com/.../Last_Update.txt?dl=1" />
-                                <button onClick={handleSaveUpdateUrlOnly} className="self-end bg-sky-600 hover:bg-sky-500 text-white px-3 py-1.5 rounded text-xs font-bold">Salva Link Versione</button>
-                            </div>
-                        </div>
-                      )}
-                  </div>
-
-                  {/* PROXY */}
-                  <div className="flex flex-col gap-2">
-                      <button onClick={() => setShowProxyInput(!showProxyInput)} className="flex items-center justify-between w-full p-3 bg-slate-800/50 rounded-lg border border-slate-700/50 text-slate-300 font-medium text-sm">
-                          <div className="flex items-center gap-2"><Network className="w-4 h-4 text-purple-400" />Proxy Cloudflare</div>{showProxyInput ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
-                      </button>
-                      {showProxyInput && (
-                        <div className="space-y-3 p-2 bg-slate-950/30 rounded border border-slate-800/50">
-                             <div className="flex justify-between px-1 text-[11px] text-slate-400"><span>Stato:</span>{hasConfiguredProxy ? <span className="text-emerald-400">Attivo (Custom)</span> : <span>Pubblico (Default)</span>}</div>
-                             <input type="text" value={tempProxyInput} onChange={(e) => setTempProxyInput(e.target.value)} className="w-full bg-slate-800 border border-slate-700 rounded p-2 text-xs text-slate-200 font-mono" placeholder="Lascia vuoto per proxy pubblico..." />
-                             <div className="flex justify-end gap-2 items-center">
-                                 {/* TEST PROXY BUTTON */}
-                                 <button onClick={handleTestProxy} disabled={isTestingProxy} className="flex items-center gap-1 bg-slate-700 text-slate-300 px-3 py-1.5 rounded text-xs border border-slate-600 hover:bg-slate-600">
-                                     {isTestingProxy ? <Activity className="w-3 h-3 animate-spin text-yellow-400" /> : <Activity className="w-3 h-3" />} Test
-                                 </button>
-                                 <button onClick={handleSaveProxyOnly} className="bg-purple-600 text-white px-3 py-1.5 rounded text-xs font-bold">Salva</button>
-                             </div>
-                        </div>
-                      )}
-                  </div>
-                  
                   {/* LOGS */}
                   {!hideLogs && (
                     <div className="flex flex-col gap-2">
@@ -505,6 +561,43 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, h
                         )}
                     </div>
                   )}
+
+                  <button onClick={() => setCurrentView('DOWNLOAD_SETTINGS')} className="flex items-center justify-between w-full p-3 bg-slate-800/50 rounded-lg border border-slate-700/50 text-slate-300 font-medium text-sm">
+                      <div className="flex items-center gap-2"><CloudCog className="w-4 h-4 text-purple-400" />Setting Index download</div><ChevronRight className="w-4 h-4 text-slate-500" />
+                  </button>
+              </>
+          )}
+
+          {currentView === 'DOWNLOAD_SETTINGS' && (
+              <div className="flex flex-col gap-4">
+                  {/* DROPBOX FOLDER */}
+                  <div className="flex flex-col gap-2">
+                      <button onClick={() => setShowUrlInput(!showUrlInput)} className="flex items-center justify-between w-full p-3 bg-slate-800/50 rounded-lg border border-slate-700/50 text-slate-300 font-medium text-sm">
+                          <div className="flex items-center gap-2"><FolderOpen className="w-4 h-4 text-emerald-400" />Link to file index</div>{showUrlInput ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+                      </button>
+                      {showUrlInput && (
+                        <div className="space-y-3 p-2 bg-slate-950/30 rounded border border-slate-800/50">
+                            <div className="flex justify-between px-1 text-[11px] text-slate-400"><span>Stato:</span>{hasConfiguredUrl ? <span className="text-emerald-400 font-bold">Configurato</span> : <span className="text-red-400">Mancante</span>}</div>
+                            <div className="relative"><textarea value={tempUrlInput} onChange={(e) => setTempUrlInput(e.target.value)} className="w-full bg-slate-800 border border-slate-700 rounded p-2 text-xs text-slate-200 h-16 resize-none" placeholder="https://dropbox.com/scl/fo/..."/>{showLinkSaveButton && (<button onClick={handleSaveUrlOnly} className="absolute bottom-2 right-2 bg-emerald-600 text-white px-2 py-1 rounded text-[10px]">Salva</button>)}</div>
+                        </div>
+                      )}
+                  </div>
+
+                  {/* LAST UPDATE URL (NEW) */}
+                  <div className="flex flex-col gap-2">
+                      <button onClick={() => setShowUpdateUrlInput(!showUpdateUrlInput)} className="flex items-center justify-between w-full p-3 bg-slate-800/50 rounded-lg border border-slate-700/50 text-slate-300 font-medium text-sm">
+                          <div className="flex items-center gap-2"><FileText className="w-4 h-4 text-sky-400" />File Versione Indice (Opzionale)</div>{showUpdateUrlInput ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+                      </button>
+                      {showUpdateUrlInput && (
+                        <div className="space-y-3 p-2 bg-slate-950/30 rounded border border-slate-800/50 animate-in fade-in slide-in-from-top-2">
+                            <p className="text-[10px] text-slate-500 leading-tight">Link diretto a <b>Last_Update.txt</b>.</p>
+                            <div className="flex flex-col gap-2">
+                                <input type="text" value={tempUpdateUrl} onChange={(e) => setTempUpdateUrl(e.target.value)} className="w-full bg-slate-800 border border-slate-700 rounded p-2 text-xs text-slate-200 font-mono" placeholder="https://dropbox.com/.../Last_Update.txt?dl=1" />
+                                <button onClick={handleSaveUpdateUrlOnly} className="self-end bg-sky-600 hover:bg-sky-500 text-white px-3 py-1.5 rounded text-xs font-bold">Salva Link</button>
+                            </div>
+                        </div>
+                      )}
+                  </div>
               </div>
           )}
         </div>

@@ -32,6 +32,10 @@ export interface BookNoteEntry {
     rating?: number; // 0, 1, 2, 3
     updatedAt?: string;
     cartaceo?: boolean;
+    pregiata?: boolean;
+    valore?: string;
+    linkWeb?: string;
+    hasImage?: boolean;
     dataPrestito?: string;
     destinatarioPrestito?: string;
     storicoPrestiti?: Array<{
@@ -46,4 +50,4 @@ export type BookNotes = Record<string, BookNoteEntry>;
 
 export type SortOption = 'title' | 'author';
 export type SortDirection = 'asc' | 'desc';
-export type FilterOption = 'ALL' | 'READ' | 'RATED' | 'EBOOK' | 'PAPERBACK' | 'LOANED' | 'MANUAL';
+export type FilterOption = 'ALL' | 'READ' | 'TO_READ' | 'RATED' | 'EBOOK' | 'PAPERBACK' | 'LOANED' | 'MANUAL' | 'PREGIATA' | 'NOTES';

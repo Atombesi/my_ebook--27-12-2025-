@@ -13,7 +13,9 @@ import { LoanModal } from './components/LoanModal';
 import { AddBookModal } from './components/AddBookModal';
 import { FilterModal } from './components/FilterModal';
 import { EditManualBookModal } from './components/EditManualBookModal';
+import { PhysicalEditionModal } from './components/PhysicalEditionModal';
 import { FilterOption } from './types';
+import { saveImage, deleteImage } from './services/imageService';
 
 // --- ERROR BOUNDARY ---
 class ErrorBoundary extends Component<{children: ReactNode}, {hasError: boolean, error: Error | null, errorInfo: ErrorInfo | null}> {
@@ -79,6 +81,7 @@ const AppContent: React.FC = () => {
 
   // Search States
   const [searchTerm, setSearchTerm] = useState('');
+  const [searchField, setSearchField] = useState<'all' | 'title' | 'author'>('all');
   
   // Filter/Sort States
   const [selectedAuthors, setSelectedAuthors] = useState<string[]>([]);
@@ -91,7 +94,7 @@ const AppContent: React.FC = () => {
   
   // USER DATA FILTER
   const [showOnlyUserData, setShowOnlyUserData] = useState(false);
-  const [filterBy, setFilterBy] = useState<FilterOption>('ALL');
+  const [filterBy, setFilterBy] = useState<FilterOption[]>(['ALL']);
   const [isFilterModalOpen, setIsFilterModalOpen] = useState(false);
 
   // UI Processing State
@@ -120,6 +123,10 @@ const AppContent: React.FC = () => {
       book: Book | null;
   }>({ isOpen: false, book: null });
 
+  const [physicalModal, setPhysicalModal] = useState<{
+      isOpen: boolean;
+      book: Book | null;
+  }>({ isOpen: false, book: null });
 
   // WATCHDOG
   useEffect(() => {
@@ -352,6 +359,54 @@ const AppContent: React.FC = () => {
       saveNotes(updatedNotes);
   };
 
+  const handlePhysicalSave = async (data: { cartaceo: boolean; pregiata: boolean; valore: string; linkWeb: string; imageBase64: string | null }) => {
+      const { book } = physicalModal;
+      if (!book) return;
+
+      const key = getBookKey(book);
+      const updatedNotes = { ...bookNotes };
+      const currentEntry = updatedNotes[key] || {};
+
+      let newEntry = { ...currentEntry, updatedAt: new Date().toISOString() };
+      
+      if (data.cartaceo) {
+          newEntry.cartaceo = true;
+          if (data.pregiata) {
+              newEntry.pregiata = true;
+              newEntry.valore = data.valore;
+              newEntry.linkWeb = data.linkWeb;
+              
+              if (data.imageBase64) {
+                  await saveImage(key, data.imageBase64);
+                  newEntry.hasImage = true;
+              }
+          } else {
+              delete newEntry.pregiata;
+              delete newEntry.valore;
+              delete newEntry.linkWeb;
+              // We don't necessarily delete the image from DB here, but we set hasImage to false
+              newEntry.hasImage = false;
+          }
+      } else {
+          delete newEntry.cartaceo;
+          delete newEntry.pregiata;
+          delete newEntry.valore;
+          delete newEntry.linkWeb;
+          newEntry.hasImage = false;
+      }
+
+      // Se l'oggetto è vuoto (no status, no note, no cartaceo, no rating), pulisci
+      if (!newEntry.status && !newEntry.note && !newEntry.cartaceo && !newEntry.rating) {
+          delete updatedNotes[key];
+      } else {
+          updatedNotes[key] = newEntry;
+      }
+
+      setBookNotes(updatedNotes);
+      saveNotes(updatedNotes);
+      setPhysicalModal({ isOpen: false, book: null });
+  };
+
   // Salvataggio Libro Manuale
   const handleManualBookSave = (author: string, title: string, status: BookStatus | null, cartaceo: boolean) => {
       const key = getRawKey(author, title);
@@ -430,7 +485,7 @@ const AppContent: React.FC = () => {
   const filteredBooks = useMemo(() => {
     // 1. Filter CSV Books
     let result = data.books.filter((book) => {
-      if (filterBy === 'MANUAL') return false; // CSV books are never manual
+      if (filterBy.includes('MANUAL') && filterBy.length === 1) return false; // If ONLY MANUAL is selected, hide CSV books
 
       // 1. User Data Filter (Top Priority)
       if (showOnlyUserData) {
@@ -447,15 +502,22 @@ const AppContent: React.FC = () => {
       if (!matchAuthor) return false;
       
       // 3. Category Filter
-      if (filterBy !== 'ALL') {
+      if (!filterBy.includes('ALL')) {
           const key = getBookKey(book);
           const entry = bookNotes[key] || {};
           
-          if (filterBy === 'READ' && entry.status !== 'READ') return false;
-          if (filterBy === 'RATED' && (!entry.rating || entry.rating === 0)) return false;
-          if (filterBy === 'EBOOK' && entry.cartaceo === true) return false;
-          if (filterBy === 'PAPERBACK' && !entry.cartaceo) return false;
-          if (filterBy === 'LOANED' && !entry.destinatarioPrestito) return false;
+          let matchesAnyFilter = false;
+          
+          if (filterBy.includes('READ') && entry.status === 'READ') matchesAnyFilter = true;
+          if (filterBy.includes('TO_READ') && entry.status === 'TO_READ') matchesAnyFilter = true;
+          if (filterBy.includes('RATED') && (entry.rating && entry.rating > 0)) matchesAnyFilter = true;
+          if (filterBy.includes('EBOOK') && !entry.cartaceo) matchesAnyFilter = true;
+          if (filterBy.includes('PAPERBACK') && entry.cartaceo) matchesAnyFilter = true;
+          if (filterBy.includes('PREGIATA') && entry.pregiata) matchesAnyFilter = true;
+          if (filterBy.includes('LOANED') && entry.destinatarioPrestito) matchesAnyFilter = true;
+          if (filterBy.includes('NOTES') && entry.note && entry.note.trim().length > 0) matchesAnyFilter = true;
+          
+          if (!matchesAnyFilter) return false;
       }
 
       // 4. Search Filter (Only Contains mode now)
@@ -465,7 +527,13 @@ const AppContent: React.FC = () => {
       const titleLower = (book.title || '').toLowerCase();
       const authorLower = (book.author || '').toLowerCase();
 
-      return titleLower.includes(searchLower) || authorLower.includes(searchLower);
+      if (searchField === 'author') {
+          return authorLower.includes(searchLower);
+      } else if (searchField === 'title') {
+          return titleLower.includes(searchLower);
+      } else {
+          return titleLower.includes(searchLower) || authorLower.includes(searchLower);
+      }
     });
 
     // 2. ORPHAN BOOKS LOGIC (Libri aggiunti manualmente)
@@ -485,7 +553,16 @@ const AppContent: React.FC = () => {
                 let matchesSearch = true;
                 if (searchTerm !== '') {
                     const searchLower = searchTerm.toLowerCase();
-                    matchesSearch = author.toLowerCase().includes(searchLower) || title.toLowerCase().includes(searchLower);
+                    const titleLower = title.toLowerCase();
+                    const authorLower = author.toLowerCase();
+                    
+                    if (searchField === 'author') {
+                        matchesSearch = authorLower.includes(searchLower);
+                    } else if (searchField === 'title') {
+                        matchesSearch = titleLower.includes(searchLower);
+                    } else {
+                        matchesSearch = authorLower.includes(searchLower) || titleLower.includes(searchLower);
+                    }
                 }
                 
                 // Controllo filtro autori anche per gli orfani
@@ -504,13 +581,19 @@ const AppContent: React.FC = () => {
 
                 // Controllo filtro Categoria
                 let matchesCategory = true;
-                if (filterBy !== 'ALL') {
-                    if (filterBy === 'READ' && entry?.status !== 'READ') matchesCategory = false;
-                    if (filterBy === 'RATED' && (!entry?.rating || entry.rating === 0)) matchesCategory = false;
-                    if (filterBy === 'EBOOK' && entry?.cartaceo === true) matchesCategory = false;
-                    if (filterBy === 'PAPERBACK' && !entry?.cartaceo) matchesCategory = false;
-                    if (filterBy === 'LOANED' && !entry?.destinatarioPrestito) matchesCategory = false;
-                    // Note: 'MANUAL' filter is implicitly true for orphan books
+                if (!filterBy.includes('ALL')) {
+                    let matchesAnyFilter = false;
+                    if (filterBy.includes('READ') && entry?.status === 'READ') matchesAnyFilter = true;
+                    if (filterBy.includes('TO_READ') && entry?.status === 'TO_READ') matchesAnyFilter = true;
+                    if (filterBy.includes('RATED') && (entry?.rating && entry.rating > 0)) matchesAnyFilter = true;
+                    if (filterBy.includes('EBOOK') && !entry?.cartaceo) matchesAnyFilter = true;
+                    if (filterBy.includes('PAPERBACK') && entry?.cartaceo) matchesAnyFilter = true;
+                    if (filterBy.includes('PREGIATA') && entry?.pregiata) matchesAnyFilter = true;
+                    if (filterBy.includes('LOANED') && entry?.destinatarioPrestito) matchesAnyFilter = true;
+                    if (filterBy.includes('NOTES') && entry?.note && entry.note.trim().length > 0) matchesAnyFilter = true;
+                    if (filterBy.includes('MANUAL')) matchesAnyFilter = true;
+                    
+                    if (!matchesAnyFilter) matchesCategory = false;
                 }
 
                 if (matchesSearch && matchesAuthor && matchesUserData && matchesCategory) {
@@ -525,8 +608,8 @@ const AppContent: React.FC = () => {
         }
     });
 
-    // If filter is MANUAL, return ONLY orphan books
-    if (filterBy === 'MANUAL') {
+    // If filter is ONLY MANUAL, return ONLY orphan books
+    if (filterBy.includes('MANUAL') && filterBy.length === 1) {
         result = orphanBooks;
     } else {
         result = [...result, ...orphanBooks];
@@ -547,7 +630,7 @@ const AppContent: React.FC = () => {
     });
 
     return result;
-  }, [data.books, searchTerm, selectedAuthors, sortBy, sortDirection, showOnlyUserData, filterBy, bookNotes]);
+  }, [data.books, searchTerm, searchField, selectedAuthors, sortBy, sortDirection, showOnlyUserData, filterBy, bookNotes]);
 
   // --- HANDLERS ---
   const performHeavyAction = (action: () => void) => {
@@ -615,30 +698,6 @@ const AppContent: React.FC = () => {
     setSelectedBook(book);
   };
 
-  const handleToggleCartaceo = (book: Book, isCartaceo: boolean) => {
-      const key = getBookKey(book);
-      const updatedNotes = { ...bookNotes };
-      const currentEntry = updatedNotes[key] || {};
-
-      let newEntry = { ...currentEntry, updatedAt: new Date().toISOString() };
-      
-      if (isCartaceo) {
-          newEntry.cartaceo = true;
-      } else {
-          delete newEntry.cartaceo;
-      }
-
-      // Se l'oggetto è vuoto (no status, no note, no cartaceo), pulisci
-      if (!newEntry.status && !newEntry.note && !newEntry.cartaceo && !newEntry.rating) {
-          delete updatedNotes[key];
-      } else {
-          updatedNotes[key] = newEntry;
-      }
-
-      setBookNotes(updatedNotes);
-      saveNotes(updatedNotes);
-  };
-
   useEffect(() => {
       if (selectedBook) {
         const exists = filteredBooks.find(b => b.id === selectedBook.id);
@@ -685,6 +744,8 @@ const AppContent: React.FC = () => {
           onSearch={handleManualSearch}
           isBusy={isBusy}
           uiOpacity={uiOpacity}
+          searchField={searchField}
+          setSearchField={setSearchField}
           // Sort Props
           sortBy={sortBy}
           setSortBy={handleSortChange}
@@ -731,7 +792,7 @@ const AppContent: React.FC = () => {
             onRequestNoteEdit={requestNoteEdit}
             onRequestLoanEdit={requestLoanEdit}
             onRateBook={handleRateBook}
-            onToggleCartaceo={handleToggleCartaceo}
+            onRequestPhysicalEdit={(book) => setPhysicalModal({ isOpen: true, book })}
         />
       </div>
 
@@ -773,6 +834,15 @@ const AppContent: React.FC = () => {
         onReturnLoan={handleLoanReturn}
       />
 
+      {/* Modale Edizione Fisica */}
+      <PhysicalEditionModal
+        isOpen={physicalModal.isOpen}
+        book={physicalModal.book}
+        currentEntry={physicalModal.book ? bookNotes[getBookKey(physicalModal.book)] : undefined}
+        onClose={() => setPhysicalModal({ isOpen: false, book: null })}
+        onSave={handlePhysicalSave}
+      />
+
       {/* Add Manual Book Modal */}
       <AddBookModal 
          isOpen={isAddBookModalOpen}
@@ -784,8 +854,18 @@ const AppContent: React.FC = () => {
       <FilterModal
          isOpen={isFilterModalOpen}
          onClose={() => setIsFilterModalOpen(false)}
-         currentFilter={filterBy}
-         onSelectFilter={setFilterBy}
+         currentFilters={filterBy}
+         onToggleFilter={(filter) => {
+             setFilterBy(prev => {
+                 if (filter === 'ALL') return ['ALL'];
+                 
+                 const newFilters = prev.includes(filter) 
+                     ? prev.filter(f => f !== filter)
+                     : [...prev.filter(f => f !== 'ALL'), filter];
+                     
+                 return newFilters.length === 0 ? ['ALL'] : newFilters;
+             });
+         }}
       />
 
       {/* Edit Manual Book Modal */}
