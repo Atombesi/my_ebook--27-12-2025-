@@ -224,7 +224,14 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, h
     }
     setShowDbInspector(true);
   };
-  const handleExportSharePrepare = () => { setPendingFilename(`backup_${new Date().toISOString().split('T')[0]}.json`); setShareOptionsPrompt(true); };
+  const getBackupFilename = () => {
+      const now = new Date();
+      const pad = (n: number) => n.toString().padStart(2, '0');
+      const dStr = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}_${pad(now.getHours())}${pad(now.getMinutes())}`;
+      return `MyEbook_backup_${dStr}.json`;
+  };
+
+  const handleExportSharePrepare = () => { setPendingFilename(getBackupFilename()); setShareOptionsPrompt(true); };
   const handleExportShareExecute = async (includeImages: boolean) => {
       setShareOptionsPrompt(false);
       setIsProcessing(true);
@@ -255,7 +262,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, h
         saveLastBackupInfo(filename); setLastBackup(getLastBackupInfo()); setBackupSuccess({ isOpen: true, mode: 'EXPORT', filename, resultLabel: 'Condiviso' });
       } catch (e:any) { alert("Errore Export: " + e.message); } finally { setIsProcessing(false); setProcessingStatus(''); }
   };
-  const handleSaveDiskPrepare = () => { setDiskSaveConfirm({ filename: `backup_${new Date().toISOString().split('T')[0]}.json` }); };
+  const handleSaveDiskPrepare = () => { setDiskSaveConfirm({ filename: getBackupFilename() }); };
   const handleSaveDiskExecute = async () => {
       if(!diskSaveConfirm) return;
       setIsProcessing(true);

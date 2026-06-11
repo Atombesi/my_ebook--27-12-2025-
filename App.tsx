@@ -780,6 +780,7 @@ const AppContent: React.FC = () => {
             bookNotes={bookNotes} // Passiamo le note
             isLoading={isAppLoading} // Nuovo stato loading
             onRequestEditManualBook={(book) => setEditManualModal({ isOpen: true, book })}
+            onRequestNoteEdit={requestNoteEdit}
             />
         </div>
 

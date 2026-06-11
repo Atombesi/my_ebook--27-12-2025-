@@ -1,6 +1,6 @@
 import React, { useRef, useEffect, useMemo, useState } from 'react';
 import { Book, BookNotes, SortOption, SortDirection } from '../types';
-import { User, CheckCircle2, Bookmark, Loader2, Book as BookIcon, UserMinus, Star, Edit2, Gem } from 'lucide-react';
+import { User, CheckCircle2, Bookmark, Loader2, Book as BookIcon, UserMinus, Star, Edit2, Gem, FileSignature, ScrollText } from 'lucide-react';
 import { getBookKey } from '../services/csvService';
 
 // --- SOLUZIONE RADICALE E DEFINITIVA ---
@@ -17,6 +17,7 @@ interface BookListBlockProps {
   bookNotes: BookNotes;
   isLoading: boolean;
   onRequestEditManualBook: (book: Book) => void;
+  onRequestNoteEdit: (book: Book) => void;
 }
 
 type ListItem = 
@@ -30,10 +31,11 @@ interface RowData {
   bookNotes: BookNotes;
   sortBy: SortOption;
   onRequestEditManualBook: (book: Book) => void;
+  onRequestNoteEdit: (book: Book) => void;
 }
 
 const BookRow = ({ index, style, data }: { index: number, style: React.CSSProperties, data: RowData }) => {
-  const { items, onSelectBook, selectedBookId, bookNotes, sortBy } = data;
+  const { items, onSelectBook, selectedBookId, bookNotes, sortBy, onRequestNoteEdit } = data;
   const item = items[index];
   const isAuthorMode = sortBy === 'author';
 
@@ -86,6 +88,7 @@ const BookRow = ({ index, style, data }: { index: number, style: React.CSSProper
   const isPregiata = noteEntry?.pregiata === true;
   const isLoaned = !!noteEntry?.destinatarioPrestito;
   const hasRating = (noteEntry?.rating || 0) > 0;
+  const hasNote = noteEntry?.note && noteEntry.note.trim().length > 0;
   const isManual = book.format === 'MANUAL';
 
   const adjustedStyle = {
@@ -98,6 +101,13 @@ const BookRow = ({ index, style, data }: { index: number, style: React.CSSProper
     <div style={adjustedStyle} className="px-2 absolute">
         <div
             onClick={() => onSelectBook(book)}
+            onDoubleClick={(e) => {
+                if (hasNote) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    onRequestNoteEdit(book);
+                }
+            }}
             className={`
             w-full px-2 rounded-lg cursor-pointer transition-all duration-200
             flex flex-col justify-center shadow-sm h-full
@@ -111,10 +121,11 @@ const BookRow = ({ index, style, data }: { index: number, style: React.CSSProper
                     {isPregiata ? (
                         <Gem className="w-3.5 h-3.5 text-purple-400 shrink-0" />
                     ) : isCartaceo ? (
-                        <BookIcon className="w-3.5 h-3.5 text-blue-400 shrink-0" />
+                        <ScrollText className="w-3.5 h-3.5 text-amber-200 drop-shadow-[0_0_2px_rgba(251,191,36,0.3)] shrink-0" />
                     ) : null}
                     {isLoaned && <UserMinus className="w-3.5 h-3.5 text-orange-400 shrink-0" />}
                     {hasRating && <Star className="w-3.5 h-3.5 text-yellow-500 fill-yellow-500 shrink-0" />}
+                    {hasNote && <FileSignature className="w-3.5 h-3.5 text-indigo-400 shrink-0" />}
                     <span className="truncate">{book.title}</span>
                 </div>
                 <div className="flex flex-col items-end gap-1.5 shrink-0">
@@ -142,7 +153,7 @@ const BookRow = ({ index, style, data }: { index: number, style: React.CSSProper
   );
 };
 
-export const BookListBlock: React.FC<BookListBlockProps> = ({ books, onSelectBook, selectedBookId, sortBy, sortDirection, uiOpacity, bookNotes, isLoading, onRequestEditManualBook }) => {
+export const BookListBlock: React.FC<BookListBlockProps> = ({ books, onSelectBook, selectedBookId, sortBy, sortDirection, uiOpacity, bookNotes, isLoading, onRequestEditManualBook, onRequestNoteEdit }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const wheelRef = useRef<HTMLDivElement>(null);
   const [scrollTop, setScrollTop] = useState(0);
@@ -316,7 +327,8 @@ export const BookListBlock: React.FC<BookListBlockProps> = ({ books, onSelectBoo
       selectedBookId,
       bookNotes,
       sortBy,
-      onRequestEditManualBook
+      onRequestEditManualBook,
+      onRequestNoteEdit
   };
 
   // Calcolo elementi visibili per la virtualizzazione
