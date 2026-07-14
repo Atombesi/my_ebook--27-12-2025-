@@ -24,6 +24,17 @@ export interface AppSettings {
   debugMode?: boolean;
 }
 
+export interface LoanRecord {
+  id: string; // uuid
+  bookKey: string;
+  title: string;
+  author: string;
+  recipient: string;
+  loanDate: string;
+  returnDate?: string | null;
+  isPhysical: boolean;
+}
+
 export type BookStatus = 'READ' | 'TO_READ';
 
 export interface BookNoteEntry {

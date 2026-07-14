@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useMemo, useCallback, Component, ErrorInfo, ReactNode } from 'react';
-import { Book, AppData, AppSettings, BookNotes, BookStatus } from './types';
-import { initializeFileSystem, loadData, loadSettings, loadNotes, saveNotes, getBookKey, getLastBackupInfo, getRawKey } from './services/csvService';
+import { Book, AppData, AppSettings, BookNotes, BookStatus, LoanRecord } from './types';
+import { initializeFileSystem, loadData, loadSettings, loadNotes, saveNotes, getBookKey, getLastBackupInfo, getRawKey, loadLoanHistory, saveLoanHistory } from './services/csvService';
 import { Header } from './components/Header';
 import { SearchBlock } from './components/SearchBlock';
 // AuthorComboBlock rimosso perché fuso in SearchBlock
@@ -14,6 +14,7 @@ import { AddBookModal } from './components/AddBookModal';
 import { FilterModal } from './components/FilterModal';
 import { EditManualBookModal } from './components/EditManualBookModal';
 import { PhysicalEditionModal } from './components/PhysicalEditionModal';
+import { LoanHistoryModal } from './components/LoanHistoryModal';
 import { FilterOption } from './types';
 import { saveImage, deleteImage } from './services/imageService';
 
@@ -74,6 +75,7 @@ export type SortDirection = 'asc' | 'desc';
 const AppContent: React.FC = () => {
   const [data, setData] = useState<AppData>({ metadata: null, books: [] });
   const [bookNotes, setBookNotes] = useState<BookNotes>({}); // Stato delle note
+  const [loanHistory, setLoanHistory] = useState<LoanRecord[]>([]); // Array globale prestiti
   const [isAppLoading, setIsAppLoading] = useState(true); // Stato di caricamento iniziale
   
   // UI States (Unified Opacity)
@@ -87,6 +89,7 @@ const AppContent: React.FC = () => {
   const [selectedAuthors, setSelectedAuthors] = useState<string[]>([]);
   const [isAuthorModalOpen, setIsAuthorModalOpen] = useState(false); // Modal State
   const [isAddBookModalOpen, setIsAddBookModalOpen] = useState(false); // Add Book Modal
+  const [isLoanHistoryModalOpen, setIsLoanHistoryModalOpen] = useState(false);
 
   const [selectedBook, setSelectedBook] = useState<Book | null>(null);
   const [sortBy, setSortBy] = useState<SortOption>('title');
@@ -148,8 +151,10 @@ const AppContent: React.FC = () => {
     requestAnimationFrame(() => {
         const loadedData = loadData();
         const loadedNotes = loadNotes();
+        const loadedLoanHistory = loadLoanHistory();
         setData(loadedData);
         setBookNotes(loadedNotes);
+        setLoanHistory(loadedLoanHistory);
         setSelectedBook(null); 
         setIsAppLoading(false);
     });
@@ -289,6 +294,21 @@ const AppContent: React.FC = () => {
       const updatedNotes = { ...bookNotes };
       const currentEntry = updatedNotes[key] || {};
 
+      const isPhysical = currentEntry.cartaceo || false;
+      const newLoan: LoanRecord = {
+          id: Date.now().toString(),
+          bookKey: key,
+          title: book.title,
+          author: book.author,
+          recipient: destinatario,
+          loanDate: data,
+          isPhysical
+      };
+      
+      const newHistory = [...loanHistory, newLoan];
+      setLoanHistory(newHistory);
+      saveLoanHistory(newHistory);
+
       updatedNotes[key] = {
           ...currentEntry,
           dataPrestito: data,
@@ -309,6 +329,16 @@ const AppContent: React.FC = () => {
       const currentEntry = updatedNotes[key];
       
       if (!currentEntry || !currentEntry.destinatarioPrestito) return;
+
+      const newHistory = [...loanHistory];
+      for (let i = newHistory.length - 1; i >= 0; i--) {
+          if (newHistory[i].bookKey === key && !newHistory[i].returnDate) {
+              newHistory[i].returnDate = new Date().toISOString().split('T')[0];
+              break;
+          }
+      }
+      setLoanHistory(newHistory);
+      saveLoanHistory(newHistory);
 
       const storico = currentEntry.storicoPrestiti || [];
       storico.push({
@@ -735,6 +765,7 @@ const AppContent: React.FC = () => {
           isBusy={isBusy}
           uiOpacity={uiOpacity}
           onDataRestored={refreshAppData}
+          onOpenLoanHistory={() => setIsLoanHistoryModalOpen(true)}
         />
 
         {/* UNIFIED CONTROL PANEL (Sort, Filters, Search) */}
@@ -849,6 +880,13 @@ const AppContent: React.FC = () => {
          isOpen={isAddBookModalOpen}
          onClose={() => setIsAddBookModalOpen(false)}
          onConfirm={handleManualBookSave}
+      />
+
+      {/* Loan History Modal */}
+      <LoanHistoryModal
+         isOpen={isLoanHistoryModalOpen}
+         onClose={() => setIsLoanHistoryModalOpen(false)}
+         loanHistory={loanHistory}
       />
 
       {/* Filter Modal */}

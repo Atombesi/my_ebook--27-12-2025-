@@ -17,10 +17,12 @@ export const LoanModal: React.FC<LoanModalProps> = ({ isOpen, book, currentEntry
     const [showHistory, setShowHistory] = useState(false);
 
     const isLoaned = !!currentEntry?.destinatarioPrestito;
+    const isPhysical = currentEntry?.cartaceo || false;
+    const showReturnFlow = isPhysical && isLoaned;
 
     useEffect(() => {
         if (isOpen) {
-            if (isLoaned) {
+            if (showReturnFlow) {
                 setDestinatario(currentEntry.destinatarioPrestito || '');
                 setDataPrestito(currentEntry.dataPrestito || new Date().toISOString().split('T')[0]);
             } else {
@@ -29,7 +31,7 @@ export const LoanModal: React.FC<LoanModalProps> = ({ isOpen, book, currentEntry
             }
             setShowHistory(false);
         }
-    }, [isOpen, isLoaned, currentEntry]);
+    }, [isOpen, showReturnFlow, currentEntry]);
 
     if (!isOpen || !book) return null;
 
@@ -67,8 +69,14 @@ export const LoanModal: React.FC<LoanModalProps> = ({ isOpen, book, currentEntry
 
                 {/* Body */}
                 <div className="flex-1 p-4 bg-slate-950/50 overflow-y-auto">
-                    {!isLoaned ? (
+                    {!showReturnFlow ? (
                         <div className="space-y-4">
+                            {isLoaned && !isPhysical && (
+                                <div className="text-xs text-orange-400 bg-orange-950/30 p-2 rounded border border-orange-900/50 mb-2">
+                                    Ultimo prestito: {currentEntry.destinatarioPrestito} (Dal: {currentEntry.dataPrestito}).<br/>
+                                    Puoi sovrascrivere per registrare un nuovo prestito.
+                                </div>
+                            )}
                             <p className="text-xs text-slate-400 mb-2">A chi stai prestando questo libro?</p>
                             <div>
                                 <label className="block text-xs text-slate-500 mb-1">Destinatario</label>
@@ -140,7 +148,7 @@ export const LoanModal: React.FC<LoanModalProps> = ({ isOpen, book, currentEntry
                     >
                         Annulla
                     </button>
-                    {!isLoaned ? (
+                    {!showReturnFlow ? (
                         <button 
                             onClick={handleSave}
                             className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-500 text-white px-5 py-2 rounded-lg font-medium transition-colors text-xs shadow-lg shadow-emerald-900/20"

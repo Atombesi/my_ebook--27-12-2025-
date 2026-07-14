@@ -63,6 +63,10 @@ async function fetchViaProxy(
     onStatusUpdate?: (status: string) => void
 ): Promise<Response> {
     
+    if (!navigator.onLine) {
+        throw new Error("Nessuna connessione internet disponibile");
+    }
+
     // 1. Normalizza URL Dropbox (Forza dl=1)
     let downloadUrl = targetUrl;
     if (downloadUrl.includes('dropbox.com')) {

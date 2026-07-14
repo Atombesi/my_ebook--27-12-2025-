@@ -17,6 +17,7 @@ interface SettingsModalProps {
   hideLogs?: boolean;
   onSave?: (settings: AppSettings) => void;
   onDataRestored?: () => void;
+  onOpenLoanHistory?: () => void;
 }
 
 interface BackupSuccessState {
@@ -28,7 +29,7 @@ interface BackupSuccessState {
 
 type SettingsView = 'MAIN' | 'DOWNLOAD_SETTINGS';
 
-export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, hideLogs = false, onSave, onDataRestored }) => {
+export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, hideLogs = false, onSave, onDataRestored, onOpenLoanHistory }) => {
   const [currentView, setCurrentView] = useState<SettingsView>('MAIN');
 
   const [uiOpacity, setUiOpacity] = useState(0.3);
@@ -518,6 +519,19 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, h
                       </button>
                       {showVisuals && ( <div className="p-3 bg-slate-950/30 rounded border border-slate-800/50"> <input type="range" min="0" max="1" step="0.05" value={uiOpacity} onChange={(e) => setUiOpacity(parseFloat(e.target.value))} className="w-full h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-emerald-500"/> </div> )}
                   </div>
+
+                  {onOpenLoanHistory && (
+                      <div className="flex flex-col gap-2">
+                          <button onClick={() => { onClose(); onOpenLoanHistory(); }} className="flex items-center justify-between w-full p-3 bg-slate-800/50 rounded-lg border border-slate-700/50 text-slate-300 font-medium text-sm">
+                              <div className="flex items-center gap-2">
+                                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-orange-400">
+                                      <path d="M3 3v18h18"/><path d="M7 16l4-4 4 4 6-6"/>
+                                  </svg>
+                                  Archivio Prestiti
+                              </div>
+                          </button>
+                      </div>
+                  )}
 
                   {/* QR CODE GENERATOR */}
                   <div className="flex flex-col gap-2">

@@ -16,6 +16,7 @@ interface HeaderProps {
   isBusy: boolean;
   uiOpacity: number;
   onDataRestored?: () => void; 
+  onOpenLoanHistory?: () => void;
 }
 
 interface UpdatesState {
@@ -34,7 +35,7 @@ export const Header: React.FC<HeaderProps> = ({
     onSettingsSaved, 
     isBusy, 
     uiOpacity,
-    onDataRestored 
+    onDataRestored, onOpenLoanHistory 
 }) => {
   const [isChecking, setIsChecking] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
@@ -61,6 +62,7 @@ export const Header: React.FC<HeaderProps> = ({
 
     // BACKGROUND CHECK on startup
     const timer = setTimeout(async () => {
+        if (!navigator.onLine) return; // Fail fast if offline
         const setts = loadSettings();
         if (setts.folderUrl && setts.folderUrl.trim() !== '') {
             try {
@@ -302,7 +304,7 @@ export const Header: React.FC<HeaderProps> = ({
         onClose={() => setShowSettings(false)} 
         hideLogs={isOnboarding}
         onSave={handleSettingsSave}
-        onDataRestored={onDataRestored}
+        onDataRestored={onDataRestored} onOpenLoanHistory={onOpenLoanHistory}
       />
       
       <InfoModal isOpen={showInfo} onClose={() => setShowInfo(false)} />

@@ -1,10 +1,11 @@
-import { Book, AppData, IndexMetadata, AppSettings, BookNotes, BookNoteEntry, BookStatus } from '../types';
+import { Book, AppData, IndexMetadata, AppSettings, BookNotes, BookNoteEntry, BookStatus, LoanRecord } from '../types';
 import { 
   DEFAULT_CSV_CONTENT, 
   STORAGE_KEY_INDEX, 
   STORAGE_KEY_NOTE, 
   STORAGE_KEY_CONFIG, 
   STORAGE_KEY_LAST_BACKUP,
+  STORAGE_KEY_LOAN_HISTORY,
   CSV_SEPARATOR,
   DEFAULT_DROPBOX_FOLDER_URL
 } from '../constants';
@@ -106,6 +107,22 @@ export const saveNotes = (notes: BookNotes): void => {
     localStorage.setItem(STORAGE_KEY_NOTE, JSON.stringify(notes));
 };
 
+// --- LOAN HISTORY MANAGEMENT ---
+
+export const loadLoanHistory = (): LoanRecord[] => {
+    const raw = localStorage.getItem(STORAGE_KEY_LOAN_HISTORY);
+    if (!raw) return [];
+    try {
+        return JSON.parse(raw);
+    } catch {
+        return [];
+    }
+};
+
+export const saveLoanHistory = (history: LoanRecord[]): void => {
+    localStorage.setItem(STORAGE_KEY_LOAN_HISTORY, JSON.stringify(history));
+};
+
 // --- BACKUP MANAGEMENT ---
 
 export interface BackupInfo {
@@ -137,12 +154,14 @@ export const saveLastBackupInfo = (filename: string): void => {
 export const exportBackupData = (): string => {
     const notes = loadNotes();
     const settings = loadSettings();
+    const loanHistory = loadLoanHistory();
     
     const backupObject = {
         version: 1,
         date: new Date().toISOString(),
         notes: notes,
-        settings: settings
+        settings: settings,
+        loanHistory: loanHistory
     };
     
     return JSON.stringify(backupObject, null, 2);
@@ -160,6 +179,10 @@ export const importBackupData = (jsonString: string): boolean => {
 
         if (backupObject.settings) {
             saveSettings(backupObject.settings);
+        }
+
+        if (backupObject.loanHistory) {
+            saveLoanHistory(backupObject.loanHistory);
         }
 
         return true;
