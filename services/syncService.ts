@@ -187,77 +187,173 @@ export interface CheckResult {
     txtContent?: string;
 }
 
+export interface ParsedUpdateContent {
+    indexDateStr?: string;
+    appVersionStr?: string;
+    appDownloadUrl?: string;
+}
+
+// Memorizza temporaneamente il contenuto di Ebook_update.txt per evitare doppie chiamate di rete
+let cachedUpdateFileText: string | null = null;
+
+export const parseUpdateFileContent = (content: string): ParsedUpdateContent => {
+    const lines = content.split(/[\r\n]+/).map(l => l.trim()).filter(l => l.length > 0);
+    let indexDateStr: string | undefined;
+    let appVersionStr: string | undefined;
+    let appDownloadUrl: string | undefined;
+
+    for (const line of lines) {
+        const sepIdx = line.search(/[;:]/);
+        if (sepIdx !== -1) {
+            const key = line.substring(0, sepIdx).trim().toUpperCase();
+            let val = line.substring(sepIdx + 1).replace(/^[;:\s]+/, '').trim();
+
+            if (key.includes('INDEX')) {
+                indexDateStr = val;
+            } else if (key.includes('APPURL') || key.includes('APP_URL') || key.includes('APK') || key.includes('URL_APP')) {
+                // Gestisce casi come "AppUrl;;" o stringhe senza link: viene considerato non specificato
+                const cleanUrl = val.replace(/[;:\s]+$/, '').trim();
+                if (cleanUrl.toLowerCase().startsWith('http')) {
+                    appDownloadUrl = cleanUrl;
+                }
+            } else if (key.includes('VER') || key.includes('APP')) {
+                const match = val.replace(',', '.').match(/(\d+(\.\d+)*)/);
+                appVersionStr = match ? match[0] : val;
+            }
+        }
+    }
+
+    // Se appVersionStr non è ancora stato trovato, cerca righe con VER o numero di versione
+    if (!appVersionStr) {
+        for (const line of lines) {
+            if (/VER/i.test(line) && !/APPURL/i.test(line)) {
+                const match = line.replace(',', '.').match(/(\d+(\.\d+)*)/);
+                if (match) {
+                    appVersionStr = match[0];
+                    break;
+                }
+            }
+        }
+    }
+
+    // Fallback: se indexDateStr non ha la parola INDEX, verifica se una riga contiene una data valida (vecchio Last_Update.txt)
+    if (!indexDateStr) {
+        for (const line of lines) {
+            const sepIdx = line.indexOf(';');
+            if (sepIdx !== -1) {
+                const candidate = line.substring(sepIdx + 1).trim();
+                if (parseCustomDate(candidate)) {
+                    indexDateStr = candidate;
+                    break;
+                }
+            }
+        }
+    }
+
+    addLog(`[DEBUG] Update parse -> Data: ${indexDateStr || 'NON TROVATA'}, Versione: ${appVersionStr || 'NON TROVATA'}, AppUrl: ${appDownloadUrl || 'NON SPECIFICATO'}`);
+
+    return { indexDateStr, appVersionStr, appDownloadUrl };
+};
+
 export const checkAppVersion = async (
     currentVersion: string,
     zipBlob?: Blob
-): Promise<{ hasUpdate: boolean; remoteVersionStr?: string; error?: string }> => {
+): Promise<{ hasUpdate: boolean; remoteVersionStr?: string; appDownloadUrl?: string; error?: string }> => {
     try {
         const settings = loadSettings();
-        
         let remoteVersion = '';
+        let fileAppUrl: string | undefined;
 
-        if (zipBlob) {
-            const zip = await JSZip.loadAsync(zipBlob);
-            const appVersionFileKey = Object.keys(zip.files).find(name => name.endsWith("AppVersion.txt") && !name.includes("__MACOSX"));
-            if (appVersionFileKey) {
-                const content = await zip.file(appVersionFileKey)?.async("string");
-                if (content) {
-                    remoteVersion = content.trim();
-                }
+        // 1. Controlla prima se abbiamo già letto Ebook_update.txt in questa sessione
+        if (cachedUpdateFileText) {
+            const parsed = parseUpdateFileContent(cachedUpdateFileText);
+            if (parsed.appVersionStr) {
+                remoteVersion = parsed.appVersionStr;
+            }
+            if (parsed.appDownloadUrl) {
+                fileAppUrl = parsed.appDownloadUrl;
             }
         }
 
-        if (!remoteVersion) {
-            let appVersionUrl = '';
-            if (settings.lastUpdateUrl && settings.lastUpdateUrl.includes('Last_Update.txt')) {
-                 appVersionUrl = settings.lastUpdateUrl.replace('Last_Update.txt', 'AppVersion.txt');
-            } else if (settings.folderUrl && !settings.folderUrl.toLowerCase().includes('dropbox.com')) {
-                 const base = settings.folderUrl.endsWith('/') ? settings.folderUrl : settings.folderUrl + '/';
-                 appVersionUrl = base + 'AppVersion.txt';
-            } else if (settings.lastUpdateUrl) {
-                 const parts = settings.lastUpdateUrl.split('/');
-                 parts.pop();
-                 appVersionUrl = parts.join('/') + '/AppVersion.txt?dl=1';
-            }
-            
-            if (appVersionUrl) {
-                try {
-                    const response = await fetchViaProxy(appVersionUrl, settings.customProxyUrl);
-                    if (response.ok) {
-                        remoteVersion = (await response.text()).trim();
+        // 2. Se non ancora trovata, prova a scaricare direttamente da lastUpdateUrl (Ebook_update.txt)
+        if (!remoteVersion && settings.lastUpdateUrl && settings.lastUpdateUrl.trim() !== '') {
+            try {
+                const response = await fetchViaProxy(settings.lastUpdateUrl, settings.customProxyUrl);
+                if (response.ok) {
+                    const text = await response.text();
+                    cachedUpdateFileText = text;
+                    const parsed = parseUpdateFileContent(text);
+                    if (parsed.appVersionStr) {
+                        remoteVersion = parsed.appVersionStr;
                     }
-                } catch(e) {
-                    // Ignore and fallback to full zip
+                    if (parsed.appDownloadUrl) {
+                        fileAppUrl = parsed.appDownloadUrl;
+                    }
                 }
+            } catch (e) {
+                // Ignore e continua con fallback
             }
         }
 
-        // Se ancora non l'abbiamo trovato e siamo su un sistema in cui i link diretti falliscono (es. Dropbox)
-        // Scarichiamo lo ZIP come facciamo per il full check dell'indice.
+        // 3. Fallback: cerca all'interno dello ZIP (se fornito)
+        if (!remoteVersion && zipBlob) {
+            try {
+                const zip = await JSZip.loadAsync(zipBlob);
+                const appVersionFileKey = Object.keys(zip.files).find(name => 
+                    (name.endsWith("AppVersion.txt") || name.endsWith("Ebook_update.txt")) && !name.includes("__MACOSX")
+                );
+                if (appVersionFileKey) {
+                    const content = await zip.file(appVersionFileKey)?.async("string");
+                    if (content) {
+                        const parsed = parseUpdateFileContent(content);
+                        remoteVersion = parsed.appVersionStr || content.trim();
+                        if (parsed.appDownloadUrl) {
+                            fileAppUrl = parsed.appDownloadUrl;
+                        }
+                    }
+                }
+            } catch {
+                // Ignora se non è uno zip
+            }
+        }
+
+        // 4. Se ancora non trovato e abbiamo folderUrl
         if (!remoteVersion && settings.folderUrl && !zipBlob) {
             try {
                 const response = await fetchViaProxy(settings.folderUrl, settings.customProxyUrl);
                 if (response.ok) {
                     const blob = await response.blob();
-                    const zip = await JSZip.loadAsync(blob);
-                    const appVersionFileKey = Object.keys(zip.files).find(name => name.endsWith("AppVersion.txt") && !name.includes("__MACOSX"));
-                    if (appVersionFileKey) {
-                        const content = await zip.file(appVersionFileKey)?.async("string");
-                        if (content) {
-                            remoteVersion = content.trim();
+                    try {
+                        const zip = await JSZip.loadAsync(blob);
+                        const appVersionFileKey = Object.keys(zip.files).find(name => 
+                            (name.endsWith("AppVersion.txt") || name.endsWith("Ebook_update.txt")) && !name.includes("__MACOSX")
+                        );
+                        if (appVersionFileKey) {
+                            const content = await zip.file(appVersionFileKey)?.async("string");
+                            if (content) {
+                                const parsed = parseUpdateFileContent(content);
+                                remoteVersion = parsed.appVersionStr || content.trim();
+                                if (parsed.appDownloadUrl) {
+                                    fileAppUrl = parsed.appDownloadUrl;
+                                }
+                            }
                         }
+                    } catch {
+                        // Non è uno zip
                     }
                 }
             } catch (e) {
-                addLog(`[WARN] AppVersion ZIP check fallito: ${e}`);
+                addLog(`[WARN] AppVersion check fallito: ${e}`);
             }
         }
 
+        // Link dal file Ebook_update.txt (riga AppUrl;...)
+        const effectiveAppUrl = (fileAppUrl && fileAppUrl.startsWith('http')) ? fileAppUrl : undefined;
+
         if (remoteVersion) {
             const extractVersion = (v: string) => {
-                // Prende solo la prima riga utile per evitare di leggere numeri nelle note
                 const firstLine = v.split('\n').find(line => line.trim().length > 0) || '';
-                const match = firstLine.match(/(\d+(\.\d+)*)/);
+                const match = firstLine.replace(',', '.').match(/(\d+(\.\d+)*)/);
                 return match ? match[0] : '';
             };
 
@@ -282,12 +378,12 @@ export const checkAppVersion = async (
                 }
                 
                 if (isNewer) {
-                    return { hasUpdate: true, remoteVersionStr: rClean };
+                    return { hasUpdate: true, remoteVersionStr: rClean, appDownloadUrl: effectiveAppUrl };
                 }
             }
-            return { hasUpdate: false };
+            return { hasUpdate: false, remoteVersionStr: rClean, appDownloadUrl: effectiveAppUrl };
         }
-        return { hasUpdate: false, error: 'Could not fetch AppVersion' };
+        return { hasUpdate: false };
     } catch (e: any) {
         return { hasUpdate: false, error: e.message };
     }
@@ -300,70 +396,103 @@ export const checkVersion = async (
 ): Promise<CheckResult> => {
     
     const settings = loadSettings();
-    if (!settings.folderUrl) return { hasUpdate: false, error: 'MISSING_URL', updateSource: 'ZIP' };
+    if (!settings.folderUrl && !settings.lastUpdateUrl) {
+        return { hasUpdate: false, error: 'MISSING_URL', updateSource: 'ZIP' };
+    }
 
-    // METODO 1: CONTROLLO LEGGERO (Last_Update.txt)
+    // Reset cache per questa esecuzione
+    cachedUpdateFileText = null;
+
+    // METODO 1: CONTROLLO Ebook_update.txt (o Last_Update.txt)
     if (settings.lastUpdateUrl && settings.lastUpdateUrl.trim() !== '') {
         try {
-            if (onStatusUpdate) onStatusUpdate("Check File Versione...");
-            // Nota: Anche qui userà fetchViaProxy che tenterà il metodo Nativo
+            if (onStatusUpdate) onStatusUpdate("Check Ebook_update.txt...");
             const response = await fetchViaProxy(settings.lastUpdateUrl, settings.customProxyUrl, onStatusUpdate);
             
             if (response.ok) {
                 const text = await response.text();
-                addLog(`[DEBUG] Last_Update: ${text.substring(0,20)}...`);
+                cachedUpdateFileText = text;
+                addLog(`[DEBUG] Ebook_update: ${text.replace(/\r?\n/g, ' | ').substring(0, 50)}...`);
                 
-                const parts = text.split(';');
-                if (parts.length >= 2) {
-                    const remoteDateStr = parts[1].trim();
+                const parsed = parseUpdateFileContent(text);
+                if (parsed.indexDateStr) {
+                    const remoteDateStr = parsed.indexDateStr;
                     const remoteDate = parseCustomDate(remoteDateStr);
                     const currentDate = parseCustomDate(currentDateStr);
                     
                     if (remoteDate && currentDate && remoteDate > currentDate) {
                         return { hasUpdate: true, remoteDateStr, updateSource: 'TXT', txtContent: text };
                     } else if (remoteDate) {
-                        return { hasUpdate: false, remoteDateStr, updateSource: 'TXT' };
+                        return { hasUpdate: false, remoteDateStr, updateSource: 'TXT', txtContent: text };
                     }
                 }
             }
         } catch (e) {
-            addLog(`[WARN] Check Light fallito: ${e}`);
+            addLog(`[WARN] Check Ebook_update fallito: ${e}`);
         }
     }
 
-    // METODO 2: CONTROLLO COMPLETO (Fallback: Scarica ZIP e controlla header)
+    if (!settings.folderUrl || settings.folderUrl.trim() === '') {
+        return { hasUpdate: false, error: 'MISSING_URL', updateSource: 'TXT' };
+    }
+
+    // METODO 2: CONTROLLO COMPLETO (Fallback: Scarica da folderUrl sia come ZIP che come TXT)
     try {
-        if (onStatusUpdate) onStatusUpdate("Check Indice Full...");
+        if (onStatusUpdate) onStatusUpdate("Check Indice...");
         const response = await fetchViaProxy(settings.folderUrl, settings.customProxyUrl, onStatusUpdate);
         
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         
         const blob = await response.blob();
-        if (blob.size < 100) throw new Error("File troppo piccolo");
+        if (blob.size < 5) throw new Error("File troppo piccolo");
 
-        // Leggi ZIP
-        if (onStatusUpdate) onStatusUpdate("Lettura ZIP...");
-        const zip = await JSZip.loadAsync(blob);
-        const fileDataKey = Object.keys(zip.files).find(name => name.includes("Ebook_Index") || name.endsWith(".csv"));
-        
-        if (!fileDataKey) throw new Error("File indice non trovato nello ZIP");
-        
-        const content = await zip.file(fileDataKey)?.async("string");
-        if (!content) throw new Error("ZIP illeggibile");
+        // 1. Proviamo come archivio ZIP
+        try {
+            if (onStatusUpdate) onStatusUpdate("Lettura...");
+            const zip = await JSZip.loadAsync(blob);
+            const fileDataKey = Object.keys(zip.files).find(name => 
+                (name.includes("Ebook_Index") || name.endsWith(".csv") || name.endsWith(".txt")) && !name.includes("__MACOSX")
+            );
+            
+            if (fileDataKey) {
+                const content = await zip.file(fileDataKey)?.async("string");
+                if (content) {
+                    const firstLine = content.split('\n')[0];
+                    const parts = firstLine.split(';');
+                    if (parts.length >= 2) {
+                        const remoteDateStr = parts[1].trim();
+                        const remoteDate = parseCustomDate(remoteDateStr);
+                        const currentDate = parseCustomDate(currentDateStr);
 
-        const firstLine = content.split('\n')[0];
-        const parts = firstLine.split(';');
-        if (parts.length < 2) throw new Error("Header non valido");
-
-        const remoteDateStr = parts[1].trim();
-        const remoteDate = parseCustomDate(remoteDateStr);
-        const currentDate = parseCustomDate(currentDateStr);
-
-        if (remoteDate && currentDate && remoteDate > currentDate) {
-             return { hasUpdate: true, remoteDateStr, updateSource: 'ZIP', zipBlob: blob };
-        } else {
-             return { hasUpdate: false, remoteDateStr, updateSource: 'ZIP', zipBlob: blob };
+                        if (remoteDate && currentDate && remoteDate > currentDate) {
+                             return { hasUpdate: true, remoteDateStr, updateSource: 'ZIP', zipBlob: blob };
+                        } else {
+                             return { hasUpdate: false, remoteDateStr, updateSource: 'ZIP', zipBlob: blob };
+                        }
+                    }
+                }
+            }
+        } catch {
+            // Non è uno zip, proviamo come file di testo diretto
         }
+
+        // 2. Lettura diretta come file di testo (es. Ebook_index.txt)
+        const textContent = await blob.text();
+        const firstLine = textContent.split('\n')[0];
+        const parts = firstLine.split(';');
+        if (parts.length >= 2) {
+            const remoteDateStr = parts[1].trim();
+            const remoteDate = parseCustomDate(remoteDateStr);
+            const currentDate = parseCustomDate(currentDateStr);
+
+            if (remoteDate && currentDate && remoteDate > currentDate) {
+                 return { hasUpdate: true, remoteDateStr, updateSource: 'TXT', txtContent: textContent };
+            } else {
+                 return { hasUpdate: false, remoteDateStr, updateSource: 'TXT', txtContent: textContent };
+            }
+        }
+
+        return { hasUpdate: false, error: "Formato indice non riconosciuto", updateSource: 'TXT' };
 
     } catch (e: any) {
         return { hasUpdate: false, error: e.message, updateSource: 'ZIP' };
@@ -380,20 +509,38 @@ export const performDownload = async (
     let blob = cachedBlob;
 
     if (!blob) {
-        if (onStatusUpdate) onStatusUpdate("Download ZIP...");
+        if (onStatusUpdate) onStatusUpdate("Download indice...");
         const response = await fetchViaProxy(settings.folderUrl, settings.customProxyUrl, onStatusUpdate);
         if (!response.ok) throw new Error("Download fallito");
         blob = await response.blob();
     }
 
-    if (onStatusUpdate) onStatusUpdate("Estrazione...");
-    const zip = await JSZip.loadAsync(blob);
-    const fileDataKey = Object.keys(zip.files).find(name => name.includes("Ebook_Index") || name.endsWith(".csv"));
+    if (onStatusUpdate) onStatusUpdate("Elaborazione indice...");
     
-    if (!fileDataKey) throw new Error("Indice non trovato");
-    
-    const content = await zip.file(fileDataKey)?.async("string");
-    return content || "";
+    // 1. Prova estrazione da ZIP
+    try {
+        const zip = await JSZip.loadAsync(blob);
+        const fileDataKey = Object.keys(zip.files).find(name => 
+            (name.includes("Ebook_Index") || name.endsWith(".csv") || name.endsWith(".txt")) && !name.includes("__MACOSX")
+        );
+        
+        if (fileDataKey) {
+            const content = await zip.file(fileDataKey)?.async("string");
+            if (content && content.trim().length > 0) {
+                return content;
+            }
+        }
+    } catch {
+        // Non è uno ZIP valido, procede come file di testo diretto
+    }
+
+    // 2. Lettura diretta come file di testo puro (es. Ebook_index.txt)
+    const textContent = await blob.text();
+    if (textContent && textContent.trim().length > 0) {
+        return textContent;
+    }
+
+    throw new Error("File indice non trovato o vuoto");
 };
 
 export const applyUpdate = (content: string) => {

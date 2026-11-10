@@ -132,7 +132,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, h
       const currentSettings = loadSettings();
       const newSettings: AppSettings = { ...currentSettings, lastUpdateUrl: tempUpdateUrl.trim() };
       saveSettings(newSettings);
-      alert("Link Versione salvato.");
+      alert("Link Ebook_update.txt salvato.");
   };
 
   const handleSaveProxyOnly = () => {
@@ -591,29 +591,40 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, h
 
           {currentView === 'DOWNLOAD_SETTINGS' && (
               <div className="flex flex-col gap-4">
-                  {/* DROPBOX FOLDER */}
+                  {/* EBOOK INDEX FILE / ZIP */}
                   <div className="flex flex-col gap-2">
                       <button onClick={() => setShowUrlInput(!showUrlInput)} className="flex items-center justify-between w-full p-3 bg-slate-800/50 rounded-lg border border-slate-700/50 text-slate-300 font-medium text-sm">
-                          <div className="flex items-center gap-2"><FolderOpen className="w-4 h-4 text-emerald-400" />Link to file index</div>{showUrlInput ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+                          <div className="flex items-center gap-2"><FolderOpen className="w-4 h-4 text-emerald-400" />Link Ebook_index.txt (o .zip)</div>{showUrlInput ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
                       </button>
                       {showUrlInput && (
                         <div className="space-y-3 p-2 bg-slate-950/30 rounded border border-slate-800/50">
                             <div className="flex justify-between px-1 text-[11px] text-slate-400"><span>Stato:</span>{hasConfiguredUrl ? <span className="text-emerald-400 font-bold">Configurato</span> : <span className="text-red-400">Mancante</span>}</div>
-                            <div className="relative"><textarea value={tempUrlInput} onChange={(e) => setTempUrlInput(e.target.value)} className="w-full bg-slate-800 border border-slate-700 rounded p-2 text-xs text-slate-200 h-16 resize-none" placeholder="https://dropbox.com/scl/fo/..."/>{showLinkSaveButton && (<button onClick={handleSaveUrlOnly} className="absolute bottom-2 right-2 bg-emerald-600 text-white px-2 py-1 rounded text-[10px]">Salva</button>)}</div>
+                            <p className="text-[10px] text-slate-500 leading-tight">Link diretto al file <b>Ebook_index.txt</b> (oppure cartella/archivio .zip con l'indice).</p>
+                            <div className="relative"><textarea value={tempUrlInput} onChange={(e) => setTempUrlInput(e.target.value)} className="w-full bg-slate-800 border border-slate-700 rounded p-2 text-xs text-slate-200 h-16 resize-none font-mono" placeholder="https://dropbox.com/.../Ebook_index.txt?dl=1"/>{showLinkSaveButton && (<button onClick={handleSaveUrlOnly} className="absolute bottom-2 right-2 bg-emerald-600 text-white px-2 py-1 rounded text-[10px]">Salva</button>)}</div>
                         </div>
                       )}
                   </div>
 
-                  {/* LAST UPDATE URL (NEW) */}
+                  {/* EBOOK UPDATE TXT */}
                   <div className="flex flex-col gap-2">
                       <button onClick={() => setShowUpdateUrlInput(!showUpdateUrlInput)} className="flex items-center justify-between w-full p-3 bg-slate-800/50 rounded-lg border border-slate-700/50 text-slate-300 font-medium text-sm">
-                          <div className="flex items-center gap-2"><FileText className="w-4 h-4 text-sky-400" />File Versione Indice (Opzionale)</div>{showUpdateUrlInput ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+                          <div className="flex items-center gap-2"><FileText className="w-4 h-4 text-sky-400" />Link Ebook_update.txt</div>{showUpdateUrlInput ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
                       </button>
                       {showUpdateUrlInput && (
                         <div className="space-y-3 p-2 bg-slate-950/30 rounded border border-slate-800/50 animate-in fade-in slide-in-from-top-2">
-                            <p className="text-[10px] text-slate-500 leading-tight">Link diretto a <b>Last_Update.txt</b>.</p>
+                            <p className="text-[10px] text-slate-400 leading-tight">
+                              Link al file <b>Ebook_update.txt</b> che può contenere:
+                            </p>
+                            <div className="p-2 bg-slate-900 rounded border border-slate-800 font-mono text-[10px] text-emerald-400 leading-relaxed">
+                              EBOOK_INDEX;10/11/2026 15:46<br />
+                              Ver;2.9<br />
+                              <span className="text-orange-400">AppUrl;https://dropbox.com/.../app.apk?dl=1</span>
+                            </div>
+                            <p className="text-[9px] text-slate-500 italic">
+                              Nota: se lasci "AppUrl;;" o ometti la riga, verrà mostrato solo l'avviso di nuova versione senza avviare link errati.
+                            </p>
                             <div className="flex flex-col gap-2">
-                                <input type="text" value={tempUpdateUrl} onChange={(e) => setTempUpdateUrl(e.target.value)} className="w-full bg-slate-800 border border-slate-700 rounded p-2 text-xs text-slate-200 font-mono" placeholder="https://dropbox.com/.../Last_Update.txt?dl=1" />
+                                <input type="text" value={tempUpdateUrl} onChange={(e) => setTempUpdateUrl(e.target.value)} className="w-full bg-slate-800 border border-slate-700 rounded p-2 text-xs text-slate-200 font-mono" placeholder="https://dropbox.com/.../Ebook_update.txt?dl=1" />
                                 <button onClick={handleSaveUpdateUrlOnly} className="self-end bg-sky-600 hover:bg-sky-500 text-white px-3 py-1.5 rounded text-xs font-bold">Salva Link</button>
                             </div>
                         </div>

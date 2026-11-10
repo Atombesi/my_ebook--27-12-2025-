@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { IndexMetadata, AppSettings } from '../types';
-import { DownloadCloud, Settings, Loader2, AlertTriangle, CheckCircle2, ArrowDownToLine, Server, FileArchive, Zap, Smartphone, ExternalLink } from 'lucide-react';
+import { DownloadCloud, Settings, Loader2, AlertTriangle, CheckCircle2, ArrowDownToLine, Server, FileArchive, Zap, Smartphone, ExternalLink, Download } from 'lucide-react';
 import { checkVersion, performDownload, applyUpdate, addLog, checkAppVersion, CheckResult } from '../services/syncService';
 import { SettingsModal } from './SettingsModal';
 import { InfoModal } from './InfoModal';
@@ -22,7 +22,7 @@ interface HeaderProps {
 interface UpdatesState {
     isOpen: boolean;
     indexUpdate?: CheckResult;
-    appUpdate?: { versionStr: string };
+    appUpdate?: { versionStr: string; downloadUrl?: string };
     isDownloadingIndex?: boolean;
     indexSuccessDate?: string;
 }
@@ -51,7 +51,7 @@ export const Header: React.FC<HeaderProps> = ({
 
   // State to hold background check results
   const [backgroundIndexUpdate, setBackgroundIndexUpdate] = useState<CheckResult | null>(null);
-  const [backgroundAppUpdate, setBackgroundAppUpdate] = useState<{versionStr: string} | null>(null);
+  const [backgroundAppUpdate, setBackgroundAppUpdate] = useState<{versionStr: string; downloadUrl?: string} | null>(null);
 
   useEffect(() => {
     const settings = loadSettings();
@@ -64,7 +64,7 @@ export const Header: React.FC<HeaderProps> = ({
     const timer = setTimeout(async () => {
         if (!navigator.onLine) return; // Fail fast if offline
         const setts = loadSettings();
-        if (setts.folderUrl && setts.folderUrl.trim() !== '') {
+        if ((setts.folderUrl && setts.folderUrl.trim() !== '') || (setts.lastUpdateUrl && setts.lastUpdateUrl.trim() !== '')) {
             try {
                 // 1. Check Index Version
                 const currentDate = metadata?.creationDate || "01-01-2000 00:00";
@@ -76,7 +76,7 @@ export const Header: React.FC<HeaderProps> = ({
                 // 2. Check App Version
                 const appRes = await checkAppVersion(APP_VERSION);
                 if (appRes.hasUpdate && appRes.remoteVersionStr) {
-                    setBackgroundAppUpdate({ versionStr: appRes.remoteVersionStr });
+                    setBackgroundAppUpdate({ versionStr: appRes.remoteVersionStr, downloadUrl: appRes.appDownloadUrl });
                 }
             } catch (e) {
                 console.log("Background check failed", e);
@@ -130,13 +130,15 @@ export const Header: React.FC<HeaderProps> = ({
         }
 
         if (idxResult.hasUpdate) setBackgroundIndexUpdate(idxResult);
-        if (appResult.hasUpdate && appResult.remoteVersionStr) setBackgroundAppUpdate({ versionStr: appResult.remoteVersionStr });
+        if (appResult.hasUpdate && appResult.remoteVersionStr) setBackgroundAppUpdate({ versionStr: appResult.remoteVersionStr, downloadUrl: appResult.appDownloadUrl });
 
         if (!updateError && !idxResult.error && !appResult.error) {
              setUpdatesModal({ 
                  isOpen: true, 
                  indexUpdate: idxResult.hasUpdate ? idxResult : undefined,
-                 appUpdate: (appResult.hasUpdate && appResult.remoteVersionStr) ? { versionStr: appResult.remoteVersionStr } : undefined
+                 appUpdate: (appResult.hasUpdate && appResult.remoteVersionStr) 
+                    ? { versionStr: appResult.remoteVersionStr, downloadUrl: appResult.appDownloadUrl } 
+                    : undefined
              });
         } else {
              alert("Si è verificato un errore durante il controllo. Consulta i log.");
@@ -405,18 +407,25 @@ export const Header: React.FC<HeaderProps> = ({
                                   <div className="text-xs text-slate-400 mb-3">
                                       Nuova versione rilasciata: <span className="font-mono text-orange-300">{updatesModal.appUpdate.versionStr}</span>
                                   </div>
-                                  <button 
-                                      onClick={() => {
-                                          setUpdatesModal({isOpen: false});
-                                          const folderUrl = loadSettings().folderUrl;
-                                          if (folderUrl) {
-                                              window.open(folderUrl, '_blank');
-                                          }
-                                      }}
-                                      className="w-full py-2 rounded-lg bg-orange-600 text-white font-bold text-sm hover:bg-orange-500 shadow shadow-orange-900/20 active:scale-95 transition-all flex justify-center items-center gap-2"
-                                  >
-                                      Apri Cartella Cloud <ExternalLink className="w-4 h-4" />
-                                  </button>
+                                  {updatesModal.appUpdate.downloadUrl ? (
+                                      <button 
+                                          onClick={() => {
+                                              const url = updatesModal.appUpdate?.downloadUrl;
+                                              setUpdatesModal({isOpen: false});
+                                              if (url) {
+                                                  window.open(url, '_blank');
+                                              }
+                                          }}
+                                          className="w-full py-2 rounded-lg bg-orange-600 text-white font-bold text-sm hover:bg-orange-500 shadow shadow-orange-900/20 active:scale-95 transition-all flex justify-center items-center gap-2"
+                                      >
+                                          <Download className="w-4 h-4" /> Scarica Nuova Versione
+                                      </button>
+                                  ) : (
+                                      <div className="text-xs text-amber-300/90 bg-amber-950/40 border border-amber-800/50 p-2.5 rounded-lg flex items-start gap-2">
+                                          <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                                          <span className="leading-tight">Nuova versione disponibile. Link di download non specificato in Ebook_update.txt (AppUrl).</span>
+                                      </div>
+                                  )}
                               </>
                           ) : (
                               <div className="text-xs text-slate-500">Già aggiornato (Ver. {APP_VERSION})</div>

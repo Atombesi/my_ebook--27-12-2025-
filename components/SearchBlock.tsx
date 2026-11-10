@@ -1,5 +1,5 @@
 import React, { useRef } from 'react';
-import { Search, Zap, Target, X, Loader2, ArrowDownAZ, ArrowUpAZ, User, BookType, Eraser, Users, BookHeart, RefreshCw, Plus, Filter } from 'lucide-react';
+import { Search, Zap, Target, X, Loader2, ArrowDownAZ, ArrowUpAZ, User, BookType, Eraser, Users, BookHeart, RefreshCw, Plus, Filter, NotebookPen } from 'lucide-react';
 import { SortOption, SortDirection, FilterOption } from '../types';
 
 interface SearchBlockProps {
@@ -32,6 +32,9 @@ interface SearchBlockProps {
 
   // Add Manual Book
   onAddManualBook: () => void;
+
+  // Quick Notes
+  onOpenQuickNotes?: () => void;
 }
 
 export const SearchBlock: React.FC<SearchBlockProps> = ({ 
@@ -53,7 +56,8 @@ export const SearchBlock: React.FC<SearchBlockProps> = ({
   resetAuthors,
   showOnlyUserData,
   toggleShowOnlyUserData,
-  onAddManualBook
+  onAddManualBook,
+  onOpenQuickNotes
 }) => {
   const inputRef = useRef<HTMLInputElement>(null);
   
@@ -89,34 +93,15 @@ export const SearchBlock: React.FC<SearchBlockProps> = ({
       {/* ROW 1: BUTTONS TOOLBAR (Equal width via flex-1) */}
       <div className="flex items-center gap-2 w-full">
           
-          {/* 1. FILTER AUTHORS */}
+          {/* 1. QUICK NOTES */}
           <button
-            onClick={openAuthorModal}
-            className={`
-                h-12 flex-1 flex items-center justify-center rounded-xl shadow-md transition-all active:scale-95 border relative
-                ${isAuthorFilterActive 
-                    ? 'bg-emerald-600 border-emerald-400 text-white shadow-emerald-900/40' 
-                    : 'bg-slate-800/60 border-slate-700/50 text-slate-400 hover:bg-slate-700/60 hover:text-slate-200'}
-            `}
-            title="Filtra per Autore"
-        >
-            <Users className="w-6 h-6" />
-            {isAuthorFilterActive && (
-                <div className="absolute top-1 right-1 flex items-center justify-center min-w-[16px] h-[16px] px-0.5 bg-white text-emerald-700 text-[9px] font-bold rounded-full border border-slate-900 shadow-sm">
-                    {authorCount}
-                </div>
-            )}
-        </button>
+            onClick={onOpenQuickNotes}
+            className="h-12 flex-1 flex items-center justify-center rounded-xl shadow-md transition-all active:scale-95 border bg-slate-800/60 border-slate-700/50 text-amber-400 hover:bg-slate-700/60 hover:text-amber-300"
+            title="Appunti Rapidi"
+          >
+            <NotebookPen className="w-6 h-6" />
+          </button>
 
-          {/* 1b. RESET AUTHORS (Conditional) */}
-          {isAuthorFilterActive && (
-              <button
-                 onClick={resetAuthors}
-                 className="h-12 flex-1 flex items-center justify-center rounded-xl bg-slate-800/60 text-slate-400 hover:text-red-400 border border-slate-700/50 shadow-md transition-all active:scale-95 animate-in fade-in zoom-in duration-200"
-              >
-                  <X className="w-6 h-6" />
-              </button>
-          )}
 
           {/* 2. FAVORITES TOGGLE */}
           <button

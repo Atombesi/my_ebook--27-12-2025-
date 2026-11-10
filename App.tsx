@@ -15,6 +15,7 @@ import { FilterModal } from './components/FilterModal';
 import { EditManualBookModal } from './components/EditManualBookModal';
 import { PhysicalEditionModal } from './components/PhysicalEditionModal';
 import { LoanHistoryModal } from './components/LoanHistoryModal';
+import { QuickNotesModal } from './components/QuickNotesModal';
 import { FilterOption } from './types';
 import { saveImage, deleteImage } from './services/imageService';
 
@@ -90,6 +91,7 @@ const AppContent: React.FC = () => {
   const [isAuthorModalOpen, setIsAuthorModalOpen] = useState(false); // Modal State
   const [isAddBookModalOpen, setIsAddBookModalOpen] = useState(false); // Add Book Modal
   const [isLoanHistoryModalOpen, setIsLoanHistoryModalOpen] = useState(false);
+  const [isQuickNotesOpen, setIsQuickNotesOpen] = useState(false);
 
   const [selectedBook, setSelectedBook] = useState<Book | null>(null);
   const [sortBy, setSortBy] = useState<SortOption>('title');
@@ -793,6 +795,8 @@ const AppContent: React.FC = () => {
           toggleShowOnlyUserData={handleToggleUserDataFilter}
           // Manual Book
           onAddManualBook={() => setIsAddBookModalOpen(true)}
+          // Quick Notes
+          onOpenQuickNotes={() => setIsQuickNotesOpen(true)}
         />
 
         {/* 
@@ -914,6 +918,12 @@ const AppContent: React.FC = () => {
          onClose={() => setEditManualModal({ isOpen: false, book: null })}
          onConfirm={handleEditManualBookSave}
          onDelete={handleDeleteManualBook}
+      />
+
+      {/* Quick Notes Modal */}
+      <QuickNotesModal
+        isOpen={isQuickNotesOpen}
+        onClose={() => setIsQuickNotesOpen(false)}
       />
     </div>
   );

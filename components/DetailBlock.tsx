@@ -384,14 +384,20 @@ export const DetailBlock: React.FC<DetailBlockProps> = ({
                         className={`
                             p-3 rounded-full border shadow-sm transition-all active:scale-95 relative
                             ${webSearchState.visible 
-                                ? 'bg-sky-600 border-sky-400 text-white shadow-sky-900/50 animate-pulse' 
+                                ? (webSearchState.query.includes('bibliografia')
+                                    ? 'bg-emerald-600 border-emerald-400 text-white shadow-emerald-900/50 animate-pulse'
+                                    : 'bg-sky-600 border-sky-400 text-white shadow-sky-900/50 animate-pulse')
                                 : 'bg-slate-800/50 border-slate-700/50 text-slate-500 hover:text-sky-400'}
                         `}
                         title="Cerca su Google"
                     >
                         <Globe className="w-6 h-6" />
                         {webSearchState.visible && (
-                            <span className="absolute -top-1 -right-1 bg-sky-500 text-white text-[8px] font-bold px-1 rounded-full border border-sky-900">
+                            <span className={`absolute -top-1 -right-1 text-white text-[8px] font-bold px-1 rounded-full border ${
+                                webSearchState.query.includes('bibliografia') 
+                                    ? 'bg-emerald-500 border-emerald-900' 
+                                    : 'bg-sky-500 border-sky-900'
+                            }`}>
                                 {webSearchState.query.includes('bibliografia') ? 'Aut' : 'Tit'}
                             </span>
                         )}

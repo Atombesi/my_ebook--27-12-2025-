@@ -18,7 +18,7 @@ export interface AppData {
 
 export interface AppSettings {
   folderUrl: string;
-  lastUpdateUrl?: string; // New: Direct link to Last_Update.txt
+  lastUpdateUrl?: string; // Direct link to Ebook_update.txt
   customProxyUrl?: string; 
   uiOpacity?: number;
   debugMode?: boolean;
