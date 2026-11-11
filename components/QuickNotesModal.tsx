@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { X, NotebookPen, Save, Copy, Check, Trash2 } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { NotebookPen, Copy, Check, Trash2 } from 'lucide-react';
 import { STORAGE_KEY_QUICK_NOTES } from '../constants';
 
 interface QuickNotesModalProps {
@@ -13,14 +13,21 @@ export const QuickNotesModal: React.FC<QuickNotesModalProps> = ({ isOpen, onClos
   const [isCopied, setIsCopied] = useState(false);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
 
+  // Ref per tracciare sempre l'ultimo testo e garantire l'auto-salvataggio
+  const noteTextRef = useRef(noteText);
+  noteTextRef.current = noteText;
+  const initialTextRef = useRef('');
+
   // Carica gli appunti al momento dell'apertura
   useEffect(() => {
     if (isOpen) {
+      let initial = '';
       try {
         const savedData = localStorage.getItem(STORAGE_KEY_QUICK_NOTES);
         if (savedData) {
           const parsed = JSON.parse(savedData);
-          setNoteText(parsed.text || '');
+          initial = parsed.text || '';
+          setNoteText(initial);
           setLastSaved(parsed.updatedAt || null);
         } else {
           setNoteText('');
@@ -28,28 +35,79 @@ export const QuickNotesModal: React.FC<QuickNotesModalProps> = ({ isOpen, onClos
         }
       } catch {
         const raw = localStorage.getItem(STORAGE_KEY_QUICK_NOTES) || '';
+        initial = raw;
         setNoteText(raw);
       }
+      initialTextRef.current = initial;
       setIsCopied(false);
       setShowClearConfirm(false);
     }
   }, [isOpen]);
 
-  if (!isOpen) return null;
+  const saveCurrentNote = (textToSave: string) => {
+    const trimmed = textToSave;
+    // Se era vuoto ed è ancora vuoto, non fare nulla
+    if (trimmed === '' && initialTextRef.current === '') {
+      return;
+    }
 
-  const handleSave = () => {
+    // Se l'utente ha cancellato tutto il testo manualmente
+    if (trimmed.trim() === '') {
+      try {
+        localStorage.removeItem(STORAGE_KEY_QUICK_NOTES);
+        initialTextRef.current = '';
+        setLastSaved(null);
+      } catch (e) {
+        console.error('Errore pulizia appunti', e);
+      }
+      return;
+    }
+
+    // Se il testo non è cambiato rispetto all'apertura, non serve aggiornare la data
+    if (trimmed === initialTextRef.current && lastSaved) {
+      return;
+    }
+
     const now = new Date();
     const formattedDate = `${now.toLocaleDateString('it-IT')} ${now.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })}`;
     const payload = {
-      text: noteText,
+      text: textToSave,
       updatedAt: formattedDate
     };
     try {
       localStorage.setItem(STORAGE_KEY_QUICK_NOTES, JSON.stringify(payload));
+      initialTextRef.current = textToSave;
       setLastSaved(formattedDate);
     } catch (e) {
       console.error('Errore salvataggio appunti', e);
     }
+  };
+
+  // Auto-salvataggio di sicurezza se il modale viene smontato mentre aperto
+  useEffect(() => {
+    return () => {
+      if (isOpen) {
+        saveCurrentNote(noteTextRef.current);
+      }
+    };
+  }, [isOpen]);
+
+  // Gestione tasto Escape
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        saveCurrentNote(noteTextRef.current);
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, onClose]);
+
+  // Salvataggio esplicito e chiusura (premendo la spunta "Fine" in alto o cliccando sullo sfondo)
+  const handleSaveAndClose = () => {
+    saveCurrentNote(noteText);
     onClose();
   };
 
@@ -64,6 +122,7 @@ export const QuickNotesModal: React.FC<QuickNotesModalProps> = ({ isOpen, onClos
   const handleClear = () => {
     setNoteText('');
     setLastSaved(null);
+    initialTextRef.current = '';
     try {
       localStorage.removeItem(STORAGE_KEY_QUICK_NOTES);
     } catch (e) {
@@ -72,11 +131,24 @@ export const QuickNotesModal: React.FC<QuickNotesModalProps> = ({ isOpen, onClos
     setShowClearConfirm(false);
   };
 
+  if (!isOpen) return null;
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-      <div className="bg-slate-900 border border-slate-700 w-full max-w-lg rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[85vh]">
+    <div 
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in duration-200"
+      onClick={(e) => {
+        // Tocco all'esterno del modale salva automaticamente e chiude
+        if (e.target === e.currentTarget) {
+          handleSaveAndClose();
+        }
+      }}
+    >
+      <div 
+        className="bg-slate-900 border border-slate-700 w-full max-w-lg rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[85vh]"
+        onClick={(e) => e.stopPropagation()}
+      >
         
-        {/* Header */}
+        {/* Header con pulsante spunta "Fine" sempre visibile e mai coperto dalla tastiera */}
         <div className="flex items-center justify-between p-4 border-b border-slate-800 bg-slate-800/60">
           <div className="flex items-center gap-2.5 text-white">
             <div className="p-2 bg-amber-500/20 text-amber-400 rounded-xl border border-amber-500/30">
@@ -84,15 +156,19 @@ export const QuickNotesModal: React.FC<QuickNotesModalProps> = ({ isOpen, onClos
             </div>
             <div>
               <h2 className="text-base font-bold text-white leading-tight">Appunti Rapidi</h2>
-              <p className="text-[11px] text-slate-400">Note personali salvate in locale</p>
+              <p className="text-[11px] text-slate-400">Note salvate automaticamente</p>
             </div>
           </div>
+          
+          {/* Spunta in alto a destra: salva e chiude */}
           <button 
-            onClick={onClose} 
-            className="text-slate-400 hover:text-white transition-colors p-1 rounded-lg hover:bg-slate-800"
-            title="Chiudi"
+            type="button"
+            onClick={handleSaveAndClose} 
+            className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shadow-md shadow-emerald-950/40 transition-all active:scale-95"
+            title="Salva e Chiudi"
           >
-            <X className="w-6 h-6" />
+            <Check className="w-4 h-4 stroke-[2.5]" />
+            <span>Fine</span>
           </button>
         </div>
 
@@ -106,7 +182,7 @@ export const QuickNotesModal: React.FC<QuickNotesModalProps> = ({ isOpen, onClos
             autoFocus
           />
 
-          {/* Footer info & quick tools */}
+          {/* Barra inferiore compatta con data, copia e cestino */}
           <div className="flex items-center justify-between mt-3 text-xs text-slate-400">
             <span className="text-[11px] text-slate-500 truncate max-w-[200px]">
               {lastSaved ? `Modificato il: ${lastSaved}` : 'Nessuna modifica recente'}
@@ -125,7 +201,7 @@ export const QuickNotesModal: React.FC<QuickNotesModalProps> = ({ isOpen, onClos
                 <span>{isCopied ? 'Copiato' : 'Copia'}</span>
               </button>
 
-              {/* Bottone Pulisci */}
+              {/* Bottone Pulisci (Cestino con conferma di sicurezza) */}
               {showClearConfirm ? (
                 <div className="flex items-center gap-1 animate-in fade-in duration-150">
                   <button
@@ -156,25 +232,6 @@ export const QuickNotesModal: React.FC<QuickNotesModalProps> = ({ isOpen, onClos
               )}
             </div>
           </div>
-        </div>
-
-        {/* Footer Actions */}
-        <div className="p-3.5 border-t border-slate-800 bg-slate-800/40 flex items-center justify-end gap-2.5">
-          <button
-            type="button"
-            onClick={onClose}
-            className="px-4 py-2 rounded-xl text-xs font-medium text-slate-300 hover:bg-slate-800 transition-colors"
-          >
-            Annulla
-          </button>
-          <button
-            type="button"
-            onClick={handleSave}
-            className="flex items-center gap-2 px-5 py-2 rounded-xl bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold shadow-lg shadow-amber-900/30 transition-all active:scale-95"
-          >
-            <Save className="w-4 h-4" />
-            <span>Salva Appunto</span>
-          </button>
         </div>
 
       </div>
