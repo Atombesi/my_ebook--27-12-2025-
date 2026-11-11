@@ -22,6 +22,7 @@ export interface AppSettings {
   customProxyUrl?: string; 
   uiOpacity?: number;
   debugMode?: boolean;
+  swipeFilters?: FilterOption[]; // Filtri abilitati per il carosello swipe
 }
 
 export interface LoanRecord {

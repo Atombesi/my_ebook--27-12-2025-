@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { X, Save, Link as LinkIcon, FolderOpen, Terminal, ChevronRight, ChevronDown, Sliders, Database, Network, ArrowLeft, CloudCog, FileText, Activity, QrCode, Download, CheckCircle2 } from 'lucide-react';
+import { X, Save, Link as LinkIcon, FolderOpen, Terminal, ChevronRight, ChevronDown, Sliders, Database, Network, ArrowLeft, CloudCog, FileText, Activity, QrCode, Download, CheckCircle2, SlidersHorizontal, Check } from 'lucide-react';
 import { QRCodeCanvas } from 'qrcode.react';
-import { loadSettings, saveSettings, exportBackupData, importBackupData, getLastBackupInfo, saveLastBackupInfo, BackupInfo } from '../services/csvService';
+import { loadSettings, saveSettings, exportBackupData, importBackupData, getLastBackupInfo, saveLastBackupInfo, BackupInfo, DEFAULT_SWIPE_FILTERS } from '../services/csvService';
 import { getLogs, clearLogs, testProxyConnection } from '../services/syncService';
-import { AppSettings } from '../types';
+import { AppSettings, FilterOption } from '../types';
 import { STORAGE_KEY_NOTE } from '../constants';
 import { FilePicker } from '@capawesome/capacitor-file-picker';
 import { Filesystem, Directory, Encoding } from '@capacitor/filesystem';
@@ -29,6 +29,19 @@ interface BackupSuccessState {
 
 type SettingsView = 'MAIN' | 'DOWNLOAD_SETTINGS';
 
+const SWIPE_FILTER_OPTIONS: { value: FilterOption; label: string }[] = [
+    { value: 'ALL', label: 'Tutti' },
+    { value: 'TO_READ', label: 'Da leggere' },
+    { value: 'READ', label: 'Letti' },
+    { value: 'PAPERBACK', label: 'Cartacei' },
+    { value: 'LOANED', label: 'In Prestito' },
+    { value: 'RATED', label: 'Valutati' },
+    { value: 'EBOOK', label: 'Solo Ebook' },
+    { value: 'PREGIATA', label: 'Pregiati' },
+    { value: 'MANUAL', label: 'Aggiunti a Mano' },
+    { value: 'NOTES', label: 'Con Note' }
+];
+
 export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, hideLogs = false, onSave, onDataRestored, onOpenLoanHistory }) => {
   const [currentView, setCurrentView] = useState<SettingsView>('MAIN');
 
@@ -42,6 +55,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, h
   
   // Last Update URL (NEW)
   const [tempUpdateUrl, setTempUpdateUrl] = useState('');
+  
+  // Swipe Filters Carousel
+  const [tempSwipeFilters, setTempSwipeFilters] = useState<FilterOption[]>(DEFAULT_SWIPE_FILTERS);
+  const [showSwipeSettings, setShowSwipeSettings] = useState(false);
   
   // Proxy
   const [tempProxyInput, setTempProxyInput] = useState('');
@@ -84,6 +101,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, h
       setShowProxyInput(false);
       setShowConsole(false);
       setShowQrCode(false);
+      setShowSwipeSettings(false);
       setQrInput('');
       setCurrentView('MAIN');
 
@@ -94,6 +112,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, h
       setTempUrlInput(''); 
 
       setTempUpdateUrl(settings.lastUpdateUrl || '');
+      setTempSwipeFilters(settings.swipeFilters || DEFAULT_SWIPE_FILTERS);
 
       const currentProxy = settings.customProxyUrl || '';
       setHasConfiguredProxy(currentProxy.trim().length > 0);
@@ -113,6 +132,17 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, h
       }
     }
   }, [isOpen, hideLogs]);
+
+  const handleToggleSwipeFilter = (filter: FilterOption) => {
+      setTempSwipeFilters(prev => {
+          if (prev.includes(filter)) {
+              const next = prev.filter(f => f !== filter);
+              return next.length > 0 ? next : ['ALL'];
+          } else {
+              return [...prev, filter];
+          }
+      });
+  };
 
   const handleSaveUrlOnly = () => {
       let url = tempUrlInput.trim();
@@ -201,7 +231,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, h
         lastUpdateUrl: tempUpdateUrl.trim(),
         customProxyUrl: proxyToSave,
         uiOpacity,
-        debugMode
+        debugMode,
+        swipeFilters: tempSwipeFilters
     };
     
     saveSettings(newSettings);
@@ -532,6 +563,54 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, h
                           </button>
                       </div>
                   )}
+
+                  {/* CAROSELLO FILTRI (SWIPE) */}
+                  <div className="flex flex-col gap-2">
+                      <button onClick={() => setShowSwipeSettings(!showSwipeSettings)} className="flex items-center justify-between w-full p-3 bg-slate-800/50 rounded-lg border border-slate-700/50 text-slate-300 font-medium text-sm">
+                          <div className="flex items-center gap-2"><SlidersHorizontal className="w-4 h-4 text-amber-400" />Carosello Filtri (Swipe)</div>{showSwipeSettings ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+                      </button>
+                      {showSwipeSettings && (
+                        <div className="space-y-3 p-3 bg-slate-950/30 rounded border border-slate-800/50 animate-in fade-in duration-200">
+                            <p className="text-[11px] text-slate-400 leading-tight">
+                              Seleziona quali categorie includere nello scorrimento con il dito (swipe a dx/sx). Se lasci spuntato solo <b>Tutti</b>, lo swipe sarà disattivato.
+                            </p>
+                            <div className="grid grid-cols-2 gap-2 mt-1">
+                                {SWIPE_FILTER_OPTIONS.map(opt => {
+                                    const isChecked = tempSwipeFilters.includes(opt.value);
+                                    return (
+                                        <button
+                                            key={opt.value}
+                                            type="button"
+                                            onClick={() => handleToggleSwipeFilter(opt.value)}
+                                            className={`flex items-center gap-2 p-2 rounded-lg text-xs font-medium border text-left transition-all ${
+                                                isChecked 
+                                                    ? 'bg-amber-600/20 border-amber-500/50 text-amber-300' 
+                                                    : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-300'
+                                            }`}
+                                        >
+                                            <div className={`w-4 h-4 rounded border flex items-center justify-center shrink-0 ${
+                                                isChecked ? 'bg-amber-500 border-amber-500 text-slate-950' : 'border-slate-600'
+                                            }`}>
+                                                {isChecked && <Check className="w-3 h-3 stroke-[3]" />}
+                                            </div>
+                                            <span className="truncate">{opt.label}</span>
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                            <div className="flex justify-between items-center pt-2 border-t border-slate-800/50 text-[10px] text-slate-500">
+                                <span>{tempSwipeFilters.length} filtri attivi nel carosello</span>
+                                <button 
+                                    type="button"
+                                    onClick={() => setTempSwipeFilters(['ALL'])} 
+                                    className="text-amber-400 hover:underline"
+                                >
+                                    Disattiva (Solo Tutti)
+                                </button>
+                            </div>
+                        </div>
+                      )}
+                  </div>
 
                   {/* QR CODE GENERATOR */}
                   <div className="flex flex-col gap-2">

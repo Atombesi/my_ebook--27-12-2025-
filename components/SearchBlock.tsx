@@ -37,6 +37,44 @@ interface SearchBlockProps {
   onOpenQuickNotes?: () => void;
 }
 
+const getFilterBadgeInfo = (filterBy: FilterOption[]): { label: string; style: string } => {
+    if (!filterBy || filterBy.length === 0 || filterBy.includes('ALL')) {
+        return {
+            label: 'TUTTI',
+            style: 'bg-slate-800/60 border-slate-700/50 text-slate-400 hover:bg-slate-700/80 hover:text-slate-300'
+        };
+    }
+    if (filterBy.length > 1) {
+        return {
+            label: `M:${filterBy.length}`,
+            style: 'bg-emerald-600/30 border-emerald-500/70 text-emerald-300 shadow-sm shadow-emerald-950'
+        };
+    }
+    const single = filterBy[0];
+    switch (single) {
+        case 'TO_READ':
+            return { label: 'DA L.', style: 'bg-sky-600/30 border-sky-500/70 text-sky-300 shadow-sm shadow-sky-950' };
+        case 'READ':
+            return { label: 'LETTI', style: 'bg-emerald-600/30 border-emerald-500/70 text-emerald-300 shadow-sm shadow-emerald-950' };
+        case 'PAPERBACK':
+            return { label: 'CART.', style: 'bg-amber-600/30 border-amber-500/70 text-amber-300 shadow-sm shadow-amber-950' };
+        case 'LOANED':
+            return { label: 'PREST', style: 'bg-purple-600/30 border-purple-500/70 text-purple-300 shadow-sm shadow-purple-950' };
+        case 'RATED':
+            return { label: 'VALUT', style: 'bg-yellow-500/30 border-yellow-400/70 text-yellow-300 shadow-sm shadow-yellow-950' };
+        case 'EBOOK':
+            return { label: 'EBOOK', style: 'bg-blue-600/30 border-blue-500/70 text-blue-300 shadow-sm shadow-blue-950' };
+        case 'PREGIATA':
+            return { label: 'PREG.', style: 'bg-rose-600/30 border-rose-500/70 text-rose-300 shadow-sm shadow-rose-950' };
+        case 'MANUAL':
+            return { label: 'MAN.', style: 'bg-indigo-600/30 border-indigo-500/70 text-indigo-300 shadow-sm shadow-indigo-950' };
+        case 'NOTES':
+            return { label: 'NOTE', style: 'bg-teal-600/30 border-teal-500/70 text-teal-300 shadow-sm shadow-teal-950' };
+        default:
+            return { label: 'FILT.', style: 'bg-emerald-600/30 border-emerald-500/70 text-emerald-300 shadow-sm shadow-emerald-950' };
+    }
+};
+
 export const SearchBlock: React.FC<SearchBlockProps> = ({ 
   searchTerm, 
   setSearchTerm, 
@@ -154,23 +192,29 @@ export const SearchBlock: React.FC<SearchBlockProps> = ({
           </button>
 
            {/* 5. FILTER BUTTON */}
-           <button
-              onClick={onOpenFilterModal}
-              className={`
-                  h-12 flex-1 rounded-xl border flex items-center justify-center transition-all active:scale-95 relative
-                  ${!filterBy.includes('ALL') 
-                      ? 'bg-emerald-600 border-emerald-400 text-white shadow-emerald-900/30' 
-                      : 'bg-slate-800/60 border-slate-700/50 text-slate-300 hover:bg-slate-700'}
-              `}
-              title="Filtra libri"
-          >
-              <Filter className="w-6 h-6" />
-              {!filterBy.includes('ALL') && (
-                  <div className="absolute top-1 right-1 flex items-center justify-center min-w-[16px] h-[16px] px-0.5 bg-white text-emerald-700 text-[9px] font-bold rounded-full border border-slate-900 shadow-sm">
-                      {filterBy.length}
-                  </div>
-              )}
-          </button>
+           {(() => {
+               const badgeInfo = getFilterBadgeInfo(filterBy);
+               return (
+                   <button
+                      onClick={onOpenFilterModal}
+                      className={`
+                          h-12 flex-1 rounded-xl border flex flex-col items-center justify-center transition-all active:scale-95 relative px-1 py-1
+                          ${badgeInfo.style}
+                      `}
+                      title="Filtra libri"
+                   >
+                      <Filter className="w-4 h-4" />
+                      <span className="text-[9px] font-bold uppercase truncate w-full text-center px-0.5 tracking-tight">
+                          {badgeInfo.label}
+                      </span>
+                      {!filterBy.includes('ALL') && filterBy.length > 1 && (
+                          <div className="absolute top-1 right-1 flex items-center justify-center min-w-[14px] h-[14px] px-0.5 bg-emerald-400 text-slate-950 text-[8px] font-bold rounded-full shadow-sm">
+                              {filterBy.length}
+                          </div>
+                      )}
+                   </button>
+               );
+           })()}
 
       </div>
 

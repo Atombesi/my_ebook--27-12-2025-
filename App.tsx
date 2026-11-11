@@ -1,6 +1,7 @@
-import React, { useEffect, useState, useMemo, useCallback, Component, ErrorInfo, ReactNode } from 'react';
+import React, { useEffect, useState, useMemo, useCallback, useRef, Component, ErrorInfo, ReactNode } from 'react';
 import { Book, AppData, AppSettings, BookNotes, BookStatus, LoanRecord } from './types';
-import { initializeFileSystem, loadData, loadSettings, loadNotes, saveNotes, getBookKey, getLastBackupInfo, getRawKey, loadLoanHistory, saveLoanHistory } from './services/csvService';
+import { initializeFileSystem, loadData, loadSettings, loadNotes, saveNotes, getBookKey, getLastBackupInfo, getRawKey, loadLoanHistory, saveLoanHistory, DEFAULT_SWIPE_FILTERS } from './services/csvService';
+import { Filter } from 'lucide-react';
 import { Header } from './components/Header';
 import { SearchBlock } from './components/SearchBlock';
 // AuthorComboBlock rimosso perché fuso in SearchBlock
@@ -102,6 +103,11 @@ const AppContent: React.FC = () => {
   const [filterBy, setFilterBy] = useState<FilterOption[]>(['ALL']);
   const [isFilterModalOpen, setIsFilterModalOpen] = useState(false);
 
+  // SWIPE CAROUSEL FILTERS
+  const [swipeFilters, setSwipeFilters] = useState<FilterOption[]>(DEFAULT_SWIPE_FILTERS);
+  const [swipeToast, setSwipeToast] = useState<{ label: string } | null>(null);
+  const touchStartRef = useRef<{ x: number; y: number; time: number } | null>(null);
+
   // UI Processing State
   const [isBusy, setIsBusy] = useState(false);
 
@@ -166,6 +172,9 @@ const AppContent: React.FC = () => {
   const refreshSettings = useCallback(() => {
       const settings = loadSettings();
       if (settings.uiOpacity !== undefined) setUiOpacity(settings.uiOpacity);
+      if (settings.swipeFilters && settings.swipeFilters.length > 0) {
+          setSwipeFilters(settings.swipeFilters);
+      }
       
       // Check Backup Time
       const backupInfo = getLastBackupInfo();
@@ -187,6 +196,102 @@ const AppContent: React.FC = () => {
   // Callback ottimizzata per aggiornamento immediato post-salvataggio
   const handleSettingsSaved = (newSettings: AppSettings) => {
       if (newSettings.uiOpacity !== undefined) setUiOpacity(newSettings.uiOpacity);
+      if (newSettings.swipeFilters && newSettings.swipeFilters.length > 0) {
+          setSwipeFilters(newSettings.swipeFilters);
+      }
+  };
+
+  // Helper label leggibile per il toast di swipe
+  const getFilterDisplayLabel = (f: FilterOption): string => {
+      switch (f) {
+          case 'ALL': return 'Tutti i libri';
+          case 'TO_READ': return 'Da leggere';
+          case 'READ': return 'Letti';
+          case 'PAPERBACK': return 'Cartacei';
+          case 'LOANED': return 'In Prestito';
+          case 'RATED': return 'Valutati';
+          case 'EBOOK': return 'Solo Ebook';
+          case 'PREGIATA': return 'Pregiati';
+          case 'MANUAL': return 'Aggiunti a Mano';
+          case 'NOTES': return 'Con Note';
+          default: return f;
+      }
+  };
+
+  // Ciclo filtri tramite swipe orizzontale
+  const cycleSwipeFilter = useCallback((direction: 'next' | 'prev') => {
+      if (!swipeFilters || swipeFilters.length <= 1) return;
+
+      const currentSingle = filterBy.length === 1 ? filterBy[0] : null;
+      const currentIndex = currentSingle !== null ? swipeFilters.indexOf(currentSingle) : -1;
+
+      let nextIndex = 0;
+      if (currentIndex === -1) {
+          nextIndex = direction === 'next' ? 0 : swipeFilters.length - 1;
+      } else {
+          if (direction === 'next') {
+              nextIndex = (currentIndex + 1) % swipeFilters.length;
+          } else {
+              nextIndex = (currentIndex - 1 + swipeFilters.length) % swipeFilters.length;
+          }
+      }
+
+      const nextFilter = swipeFilters[nextIndex];
+      setFilterBy([nextFilter]);
+      setSwipeToast({ label: getFilterDisplayLabel(nextFilter) });
+  }, [filterBy, swipeFilters]);
+
+  // Timer per auto-chiusura del badge toast
+  useEffect(() => {
+      if (!swipeToast) return;
+      const timer = setTimeout(() => {
+          setSwipeToast(null);
+      }, 1100);
+      return () => clearTimeout(timer);
+  }, [swipeToast]);
+
+  // Gestione touch swipe: movimento deciso (> 90px e orizzontalità > 2.2x) per evitare swipe involontari durante lo scroll verticale
+  const handleTouchStart = (e: React.TouchEvent) => {
+      if (!swipeFilters || swipeFilters.length <= 1) return;
+      if (e.touches.length !== 1) {
+          touchStartRef.current = null;
+          return;
+      }
+      const touch = e.touches[0];
+      touchStartRef.current = {
+          x: touch.clientX,
+          y: touch.clientY,
+          time: Date.now()
+      };
+  };
+
+  const handleTouchEnd = (e: React.TouchEvent) => {
+      if (!touchStartRef.current || !swipeFilters || swipeFilters.length <= 1) {
+          touchStartRef.current = null;
+          return;
+      }
+      if (e.changedTouches.length !== 1) {
+          touchStartRef.current = null;
+          return;
+      }
+      const touch = e.changedTouches[0];
+      const diffX = touch.clientX - touchStartRef.current.x;
+      const diffY = touch.clientY - touchStartRef.current.y;
+      const duration = Date.now() - touchStartRef.current.time;
+      touchStartRef.current = null;
+
+      const MIN_SWIPE_DISTANCE = 90; // Soglia aumentata: movimento ben deciso per evitare swipe involontari durante lo scroll
+      const HORIZONTAL_DOMINANCE_RATIO = 2.2; // Orizzontale prevalente
+
+      if (duration < 650 && Math.abs(diffX) >= MIN_SWIPE_DISTANCE && Math.abs(diffX) > Math.abs(diffY) * HORIZONTAL_DOMINANCE_RATIO) {
+          if (diffX < 0) {
+              // Swipe da destra verso sinistra -> successivo
+              cycleSwipeFilter('next');
+          } else {
+              // Swipe da sinistra verso destra -> precedente
+              cycleSwipeFilter('prev');
+          }
+      }
   };
 
   // --- LOGICA NOTE E STATO ---
@@ -804,7 +909,11 @@ const AppContent: React.FC = () => {
             flex-1: Occupa tutto lo spazio verticale rimanente.
             min-h-0: Necessario per far funzionare lo scroll interno in flexbox nidificati.
         */}
-        <div className="flex-1 w-full min-h-0 relative">
+        <div 
+          className="flex-1 w-full min-h-0 relative select-none"
+          onTouchStart={handleTouchStart}
+          onTouchEnd={handleTouchEnd}
+        >
             <BookListBlock 
             books={filteredBooks} 
             onSelectBook={handleSelectBook} 
@@ -817,6 +926,18 @@ const AppContent: React.FC = () => {
             onRequestEditManualBook={(book) => setEditManualModal({ isOpen: true, book })}
             onRequestNoteEdit={requestNoteEdit}
             />
+
+            {/* Toast feedback pill al cambio filtro via swipe */}
+            {swipeToast && (
+                <div className="absolute top-3 left-1/2 -translate-x-1/2 z-30 pointer-events-none transition-all duration-200">
+                    <div className="flex items-center gap-2 bg-slate-900/90 border border-emerald-500/70 text-emerald-300 px-3.5 py-1.5 rounded-full shadow-2xl backdrop-blur-md">
+                        <Filter className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                        <span className="text-xs font-semibold tracking-wide">
+                            {swipeToast.label}
+                        </span>
+                    </div>
+                </div>
+            )}
         </div>
 
         {/* Pannello Dettaglio */}

@@ -1,4 +1,4 @@
-import { Book, AppData, IndexMetadata, AppSettings, BookNotes, BookNoteEntry, BookStatus, LoanRecord } from '../types';
+import { Book, AppData, IndexMetadata, AppSettings, BookNotes, BookNoteEntry, BookStatus, LoanRecord, FilterOption } from '../types';
 import { 
   DEFAULT_CSV_CONTENT, 
   STORAGE_KEY_INDEX, 
@@ -29,6 +29,8 @@ export const saveRawIndex = (content: string): void => {
   localStorage.setItem(STORAGE_KEY_INDEX, content);
 };
 
+export const DEFAULT_SWIPE_FILTERS: FilterOption[] = ['ALL', 'TO_READ', 'READ', 'PAPERBACK', 'LOANED'];
+
 // --- SETTINGS MANAGEMENT ---
 export const loadSettings = (): AppSettings => {
   const rawConfig = localStorage.getItem(STORAGE_KEY_CONFIG);
@@ -42,7 +44,8 @@ export const loadSettings = (): AppSettings => {
     lastUpdateUrl: '', // Default empty
     customProxyUrl: DEFAULT_PROXY, 
     uiOpacity: 0.6, 
-    debugMode: false
+    debugMode: false,
+    swipeFilters: DEFAULT_SWIPE_FILTERS
   };
 
   if (rawConfig) {
@@ -53,7 +56,10 @@ export const loadSettings = (): AppSettings => {
             lastUpdateUrl: parsed.lastUpdateUrl || '',
             customProxyUrl: parsed.customProxyUrl !== undefined ? parsed.customProxyUrl : DEFAULT_PROXY,
             uiOpacity: parsed.uiOpacity !== undefined ? parsed.uiOpacity : 0.6,
-            debugMode: parsed.debugMode !== undefined ? parsed.debugMode : false
+            debugMode: parsed.debugMode !== undefined ? parsed.debugMode : false,
+            swipeFilters: Array.isArray(parsed.swipeFilters) && parsed.swipeFilters.length > 0
+                ? parsed.swipeFilters
+                : DEFAULT_SWIPE_FILTERS
         };
     } catch (e) {
         console.error("Error loading settings", e);
