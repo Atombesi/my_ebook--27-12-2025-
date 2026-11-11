@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Save, Link as LinkIcon, FolderOpen, Terminal, ChevronRight, ChevronDown, Sliders, Database, Network, ArrowLeft, CloudCog, FileText, Activity, QrCode, Download, CheckCircle2, SlidersHorizontal, Check } from 'lucide-react';
+import { X, Save, Link as LinkIcon, FolderOpen, Terminal, ChevronRight, ChevronDown, Sliders, Database, Network, ArrowLeft, CloudCog, FileText, Activity, QrCode, Download, CheckCircle2, SlidersHorizontal, Check, Info } from 'lucide-react';
 import { QRCodeCanvas } from 'qrcode.react';
 import { loadSettings, saveSettings, exportBackupData, importBackupData, getLastBackupInfo, saveLastBackupInfo, BackupInfo, DEFAULT_SWIPE_FILTERS } from '../services/csvService';
 import { getLogs, clearLogs, testProxyConnection } from '../services/syncService';
@@ -79,6 +79,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, h
   
   const [showUrlInput, setShowUrlInput] = useState(false);
   const [showUpdateUrlInput, setShowUpdateUrlInput] = useState(false); // New accordion
+  const [showUpdateFileInfo, setShowUpdateFileInfo] = useState(false); // Info toggle
   const [showProxyInput, setShowProxyInput] = useState(false);
   const [showConsole, setShowConsole] = useState(false);
   
@@ -98,6 +99,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, h
       setShowVisuals(false);
       setShowUrlInput(false);
       setShowUpdateUrlInput(false);
+      setShowUpdateFileInfo(false);
       setShowProxyInput(false);
       setShowConsole(false);
       setShowQrCode(false);
@@ -691,21 +693,51 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, h
                       </button>
                       {showUpdateUrlInput && (
                         <div className="space-y-3 p-2 bg-slate-950/30 rounded border border-slate-800/50 animate-in fade-in slide-in-from-top-2">
-                            <p className="text-[10px] text-slate-400 leading-tight">
-                              Link al file <b>Ebook_update.txt</b> che può contenere:
-                            </p>
-                            <div className="p-2 bg-slate-900 rounded border border-slate-800 font-mono text-[10px] text-emerald-400 leading-relaxed">
-                              EBOOK_INDEX;10/11/2026 15:46<br />
-                              Ver;2.9<br />
-                              <span className="text-orange-400">AppUrl;https://dropbox.com/.../app.apk?dl=1</span>
-                            </div>
-                            <p className="text-[9px] text-slate-500 italic">
-                              Nota: se lasci "AppUrl;;" o ometti la riga, verrà mostrato solo l'avviso di nuova versione senza avviare link errati.
-                            </p>
                             <div className="flex flex-col gap-2">
-                                <input type="text" value={tempUpdateUrl} onChange={(e) => setTempUpdateUrl(e.target.value)} className="w-full bg-slate-800 border border-slate-700 rounded p-2 text-xs text-slate-200 font-mono" placeholder="https://dropbox.com/.../Ebook_update.txt?dl=1" />
-                                <button onClick={handleSaveUpdateUrlOnly} className="self-end bg-sky-600 hover:bg-sky-500 text-white px-3 py-1.5 rounded text-xs font-bold">Salva Link</button>
+                                <input 
+                                  type="text" 
+                                  value={tempUpdateUrl} 
+                                  onChange={(e) => setTempUpdateUrl(e.target.value)} 
+                                  className="w-full bg-slate-800 border border-slate-700 rounded p-2 text-xs text-slate-200 font-mono" 
+                                  placeholder="https://dropbox.com/.../Ebook_update.txt?dl=1" 
+                                />
+                                <div className="flex items-center justify-between gap-2 pt-1">
+                                    <button 
+                                      type="button"
+                                      onClick={() => setShowUpdateFileInfo(!showUpdateFileInfo)}
+                                      className={`p-1.5 rounded-lg border transition-all flex items-center gap-1.5 text-xs ${showUpdateFileInfo ? 'bg-sky-500/20 text-sky-300 border-sky-500/40' : 'bg-slate-800/70 text-slate-400 border-slate-700/60 hover:text-slate-200'}`}
+                                      title="Mostra/Nascondi informazioni sulla struttura del file"
+                                    >
+                                      <Info className="w-4 h-4" />
+                                      <span className="text-[11px]">Info file</span>
+                                    </button>
+
+                                    <button 
+                                      onClick={handleSaveUpdateUrlOnly} 
+                                      className="bg-sky-600 hover:bg-sky-500 text-white px-3 py-1.5 rounded text-xs font-bold transition-all active:scale-95"
+                                    >
+                                      Salva Link
+                                    </button>
+                                </div>
                             </div>
+
+                            {/* Informazioni a comparsa attivate solo premendo l'icona (i) */}
+                            {showUpdateFileInfo && (
+                              <div className="space-y-2 p-2.5 bg-slate-900 rounded border border-slate-800 font-sans text-xs text-slate-300 animate-in fade-in duration-150">
+                                  <p className="text-[10px] text-slate-400 leading-tight">
+                                    Struttura del file <b>Ebook_update.txt</b>:
+                                  </p>
+                                  <div className="p-2 bg-slate-950/70 rounded border border-slate-800 font-mono text-[10px] text-emerald-400 leading-relaxed">
+                                    EBOOK_INDEX;10/11/2026 15:46<br />
+                                    Ver;2.9<br />
+                                    <span className="text-orange-400">AppUrl;https://dropbox.com/.../app.apk?dl=1</span><br />
+                                    <span className="text-sky-300">VersionInfo;Aggiunto swipe carosello filtri e note rapide</span>
+                                  </div>
+                                  <p className="text-[9px] text-slate-500 italic leading-tight">
+                                    Nota: "AppUrl;" e "VersionInfo;" sono facoltativi. Se "VersionInfo;" contiene una descrizione, verrà mostrata all'utente nella finestra quando c'è una nuova versione.
+                                  </p>
+                              </div>
+                            )}
                         </div>
                       )}
                   </div>

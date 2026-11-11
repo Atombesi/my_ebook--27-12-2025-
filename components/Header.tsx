@@ -22,7 +22,7 @@ interface HeaderProps {
 interface UpdatesState {
     isOpen: boolean;
     indexUpdate?: CheckResult;
-    appUpdate?: { versionStr: string; downloadUrl?: string };
+    appUpdate?: { versionStr: string; downloadUrl?: string; versionInfo?: string };
     isDownloadingIndex?: boolean;
     indexSuccessDate?: string;
 }
@@ -51,7 +51,7 @@ export const Header: React.FC<HeaderProps> = ({
 
   // State to hold background check results
   const [backgroundIndexUpdate, setBackgroundIndexUpdate] = useState<CheckResult | null>(null);
-  const [backgroundAppUpdate, setBackgroundAppUpdate] = useState<{versionStr: string; downloadUrl?: string} | null>(null);
+  const [backgroundAppUpdate, setBackgroundAppUpdate] = useState<{versionStr: string; downloadUrl?: string; versionInfo?: string} | null>(null);
 
   useEffect(() => {
     const settings = loadSettings();
@@ -76,7 +76,7 @@ export const Header: React.FC<HeaderProps> = ({
                 // 2. Check App Version
                 const appRes = await checkAppVersion(APP_VERSION);
                 if (appRes.hasUpdate && appRes.remoteVersionStr) {
-                    setBackgroundAppUpdate({ versionStr: appRes.remoteVersionStr, downloadUrl: appRes.appDownloadUrl });
+                    setBackgroundAppUpdate({ versionStr: appRes.remoteVersionStr, downloadUrl: appRes.appDownloadUrl, versionInfo: appRes.versionInfo });
                 }
             } catch (e) {
                 console.log("Background check failed", e);
@@ -130,14 +130,14 @@ export const Header: React.FC<HeaderProps> = ({
         }
 
         if (idxResult.hasUpdate) setBackgroundIndexUpdate(idxResult);
-        if (appResult.hasUpdate && appResult.remoteVersionStr) setBackgroundAppUpdate({ versionStr: appResult.remoteVersionStr, downloadUrl: appResult.appDownloadUrl });
+        if (appResult.hasUpdate && appResult.remoteVersionStr) setBackgroundAppUpdate({ versionStr: appResult.remoteVersionStr, downloadUrl: appResult.appDownloadUrl, versionInfo: appResult.versionInfo });
 
         if (!updateError && !idxResult.error && !appResult.error) {
              setUpdatesModal({ 
                  isOpen: true, 
                  indexUpdate: idxResult.hasUpdate ? idxResult : undefined,
                  appUpdate: (appResult.hasUpdate && appResult.remoteVersionStr) 
-                    ? { versionStr: appResult.remoteVersionStr, downloadUrl: appResult.appDownloadUrl } 
+                    ? { versionStr: appResult.remoteVersionStr, downloadUrl: appResult.appDownloadUrl, versionInfo: appResult.versionInfo } 
                     : undefined
              });
         } else {
@@ -404,9 +404,22 @@ export const Header: React.FC<HeaderProps> = ({
                           </div>
                           {updatesModal.appUpdate ? (
                               <>
-                                  <div className="text-xs text-slate-400 mb-3">
-                                      Nuova versione rilasciata: <span className="font-mono text-orange-300">{updatesModal.appUpdate.versionStr}</span>
+                                  <div className="text-xs text-slate-400 mb-2">
+                                      Nuova versione rilasciata: <span className="font-mono text-orange-300 font-bold">{updatesModal.appUpdate.versionStr}</span>
                                   </div>
+
+                                  {/* Note di rilascio / Novità da VersionInfo; (se presenti) */}
+                                  {updatesModal.appUpdate.versionInfo && (
+                                      <div className="mb-3 p-2.5 rounded-lg bg-slate-900/90 border border-orange-500/30 text-xs text-slate-300">
+                                          <div className="text-[10px] font-bold uppercase tracking-wider text-orange-400 mb-1 flex items-center gap-1">
+                                              <span>Novità versione {updatesModal.appUpdate.versionStr}:</span>
+                                          </div>
+                                          <p className="whitespace-pre-line text-[11px] text-slate-300 leading-relaxed font-sans">
+                                              {updatesModal.appUpdate.versionInfo}
+                                          </p>
+                                      </div>
+                                  )}
+
                                   {updatesModal.appUpdate.downloadUrl ? (
                                       <button 
                                           onClick={() => {

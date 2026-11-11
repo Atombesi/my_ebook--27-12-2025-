@@ -191,6 +191,7 @@ export interface ParsedUpdateContent {
     indexDateStr?: string;
     appVersionStr?: string;
     appDownloadUrl?: string;
+    versionInfo?: string;
 }
 
 // Memorizza temporaneamente il contenuto di Ebook_update.txt per evitare doppie chiamate di rete
@@ -201,6 +202,7 @@ export const parseUpdateFileContent = (content: string): ParsedUpdateContent => 
     let indexDateStr: string | undefined;
     let appVersionStr: string | undefined;
     let appDownloadUrl: string | undefined;
+    let versionInfo: string | undefined;
 
     for (const line of lines) {
         const sepIdx = line.search(/[;:]/);
@@ -216,6 +218,11 @@ export const parseUpdateFileContent = (content: string): ParsedUpdateContent => 
                 if (cleanUrl.toLowerCase().startsWith('http')) {
                     appDownloadUrl = cleanUrl;
                 }
+            } else if (key.includes('VERSIONINFO') || key.includes('VERSION_INFO') || key.includes('CHANGELOG') || key === 'INFO' || key === 'DESC') {
+                const cleanInfo = val.replace(/[;:\s]+$/, '').trim();
+                if (cleanInfo.length > 0) {
+                    versionInfo = cleanInfo;
+                }
             } else if (key.includes('VER') || key.includes('APP')) {
                 const match = val.replace(',', '.').match(/(\d+(\.\d+)*)/);
                 appVersionStr = match ? match[0] : val;
@@ -226,7 +233,7 @@ export const parseUpdateFileContent = (content: string): ParsedUpdateContent => 
     // Se appVersionStr non è ancora stato trovato, cerca righe con VER o numero di versione
     if (!appVersionStr) {
         for (const line of lines) {
-            if (/VER/i.test(line) && !/APPURL/i.test(line)) {
+            if (/VER/i.test(line) && !/APPURL/i.test(line) && !/VERSIONINFO/i.test(line)) {
                 const match = line.replace(',', '.').match(/(\d+(\.\d+)*)/);
                 if (match) {
                     appVersionStr = match[0];
@@ -250,19 +257,20 @@ export const parseUpdateFileContent = (content: string): ParsedUpdateContent => 
         }
     }
 
-    addLog(`[DEBUG] Update parse -> Data: ${indexDateStr || 'NON TROVATA'}, Versione: ${appVersionStr || 'NON TROVATA'}, AppUrl: ${appDownloadUrl || 'NON SPECIFICATO'}`);
+    addLog(`[DEBUG] Update parse -> Data: ${indexDateStr || 'NON TROVATA'}, Versione: ${appVersionStr || 'NON TROVATA'}, AppUrl: ${appDownloadUrl || 'NON SPECIFICATO'}, Info: ${versionInfo || 'NESSUNA'}`);
 
-    return { indexDateStr, appVersionStr, appDownloadUrl };
+    return { indexDateStr, appVersionStr, appDownloadUrl, versionInfo };
 };
 
 export const checkAppVersion = async (
     currentVersion: string,
     zipBlob?: Blob
-): Promise<{ hasUpdate: boolean; remoteVersionStr?: string; appDownloadUrl?: string; error?: string }> => {
+): Promise<{ hasUpdate: boolean; remoteVersionStr?: string; appDownloadUrl?: string; versionInfo?: string; error?: string }> => {
     try {
         const settings = loadSettings();
         let remoteVersion = '';
         let fileAppUrl: string | undefined;
+        let fileVersionInfo: string | undefined;
 
         // 1. Controlla prima se abbiamo già letto Ebook_update.txt in questa sessione
         if (cachedUpdateFileText) {
@@ -272,6 +280,9 @@ export const checkAppVersion = async (
             }
             if (parsed.appDownloadUrl) {
                 fileAppUrl = parsed.appDownloadUrl;
+            }
+            if (parsed.versionInfo) {
+                fileVersionInfo = parsed.versionInfo;
             }
         }
 
@@ -288,6 +299,9 @@ export const checkAppVersion = async (
                     }
                     if (parsed.appDownloadUrl) {
                         fileAppUrl = parsed.appDownloadUrl;
+                    }
+                    if (parsed.versionInfo) {
+                        fileVersionInfo = parsed.versionInfo;
                     }
                 }
             } catch (e) {
@@ -309,6 +323,9 @@ export const checkAppVersion = async (
                         remoteVersion = parsed.appVersionStr || content.trim();
                         if (parsed.appDownloadUrl) {
                             fileAppUrl = parsed.appDownloadUrl;
+                        }
+                        if (parsed.versionInfo) {
+                            fileVersionInfo = parsed.versionInfo;
                         }
                     }
                 }
@@ -335,6 +352,9 @@ export const checkAppVersion = async (
                                 remoteVersion = parsed.appVersionStr || content.trim();
                                 if (parsed.appDownloadUrl) {
                                     fileAppUrl = parsed.appDownloadUrl;
+                                }
+                                if (parsed.versionInfo) {
+                                    fileVersionInfo = parsed.versionInfo;
                                 }
                             }
                         }
@@ -378,10 +398,10 @@ export const checkAppVersion = async (
                 }
                 
                 if (isNewer) {
-                    return { hasUpdate: true, remoteVersionStr: rClean, appDownloadUrl: effectiveAppUrl };
+                    return { hasUpdate: true, remoteVersionStr: rClean, appDownloadUrl: effectiveAppUrl, versionInfo: fileVersionInfo };
                 }
             }
-            return { hasUpdate: false, remoteVersionStr: rClean, appDownloadUrl: effectiveAppUrl };
+            return { hasUpdate: false, remoteVersionStr: rClean, appDownloadUrl: effectiveAppUrl, versionInfo: fileVersionInfo };
         }
         return { hasUpdate: false };
     } catch (e: any) {
